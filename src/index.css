@@ -1,0 +1,202 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer utilities {
+  .scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.08); /* Updated opacity */
+    animation: scan 4s linear infinite;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  @keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+
+  @keyframes rowClearCell {
+    0% { background-color: #FFF; box-shadow: inset 0 0 0 5px #FFF; transform: scale(1); opacity: 1; z-index: 50; }
+    50% { transform: scale(1.1); background-color: #FFF; opacity: 1; }
+    100% { transform: scale(0) rotate(15deg); opacity: 0; filter: blur(2px); }
+  }
+
+  .anim-row-clear {
+    animation: rowClearCell 0.25s forwards cubic-bezier(0.8, 0, 0.2, 1) !important;
+    position: relative;
+    z-index: 10;
+  }
+
+  @keyframes hardShake {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    20% { transform: translate(-2px, 3px) rotate(-0.5deg); }
+    40% { transform: translate(3px, -2px) rotate(0.5deg); }
+    60% { transform: translate(-3px, -1px) rotate(-0.5deg); }
+    80% { transform: translate(2px, 2px) rotate(0.5deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+
+  .anim-shake {
+    animation: hardShake 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  }
+  
+  @keyframes lockPulse {
+    0% { background-color: #FFF; box-shadow: inset 0 0 0 10px #FFF; }
+    100% { background-color: #000; box-shadow: inset 0 0 0 2px #FFF; }
+  }
+  
+  .anim-lock {
+    animation: lockPulse 0.3s ease-out forwards;
+  }
+
+  @keyframes hardDropFlash {
+    0% { filter: invert(1); }
+    100% { filter: invert(0); }
+  }
+  
+  .anim-drop-flash {
+    animation: hardDropFlash 0.15s ease-out forwards;
+  }
+
+  .glitch-flash {
+    animation: glitch 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+    background-color: white !important;
+    color: black !important;
+  }
+
+  @keyframes glitch {
+    0% { transform: translate(0) }
+    20% { transform: translate(-2px, 2px) }
+    40% { transform: translate(-2px, -2px) }
+    60% { transform: translate(2px, 2px) }
+    80% { transform: translate(2px, -2px) }
+    100% { transform: translate(0) }
+  }
+
+  .hud-flash {
+    animation: hudflash 0.1s ease-out;
+  }
+
+  @keyframes hudflash {
+    0% { box-shadow: inset 0 0 0 4px white; }
+    100% { box-shadow: inset 0 0 0 0 transparent; }
+  }
+
+  /* Structural elements from design */
+  .grid-bg {
+    background: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 10% 5%; /* Dynamically matches grid cells */
+  }
+
+  .corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid white;
+    z-index: 10;
+  }
+  .corner-tl { top: -6px; left: -6px; border-right: 0; border-bottom: 0; }
+  .corner-tr { top: -6px; right: -6px; border-left: 0; border-bottom: 0; }
+  .corner-bl { bottom: -6px; left: -6px; border-right: 0; border-top: 0; }
+  .corner-br { bottom: -6px; right: -6px; border-left: 0; border-top: 0; }
+
+  .metadata {
+    font-size: 8px;
+    color: #A0A0A0;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  
+  .h-header {
+    font-size: 48px;
+    letter-spacing: 0.4em;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  
+  .bracket-val {
+    color: white;
+    font-weight: bold;
+  }
+
+  .industrial-btn {
+    border: 2px solid white;
+    background: black;
+    padding: 12px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .visor {
+    border: 1px solid white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background-color: black;
+  }
+  .visor::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 1px;
+    background: white;
+    opacity: 0.2;
+  }
+  .visor::after {
+    content: '';
+    position: absolute;
+    height: 100%;
+    width: 1px;
+    background: white;
+    opacity: 0.2;
+  }
+
+  /* Uniform Tetromino style updated to perfect negative space boundaries */
+  .piece-I, .piece-J, .piece-L, .piece-O, .piece-S, .piece-T, .piece-Z {
+    background-color: #000;
+    border: 1px solid #000;
+    box-shadow: inset 0 0 0 2px #FFF;
+    box-sizing: border-box;
+  }
+  
+  .piece-ghost {
+    background-color: transparent !important;
+    border: 1px solid #000;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4) !important;
+    box-sizing: border-box;
+  }
+  
+  /* Mobile optimized button click feedback */
+  .industrial-btn:active {
+    transform: translateY(2px);
+  }
+}
+
+body {
+  background-color: #000000;
+  color: #FFFFFF;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  overflow: hidden;
+  touch-action: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+}
+
+
