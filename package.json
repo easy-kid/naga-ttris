@@ -1,14 +1,16 @@
 {
-  "name": "react-example",
+  "name": "sb-tetris",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev": "vite --port=3005 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:c": "make -C c-engine test && ./c-engine/test_tetris",
+    "build:c": "make -C c-engine all"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

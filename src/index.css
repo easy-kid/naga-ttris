@@ -5,14 +5,19 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Strict enforcement of square edges */
+* {
+  border-radius: 0 !important;
+}
+
 @layer utilities {
   .scanline {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 10px;
-    background: rgba(255, 255, 255, 0.08); /* Updated opacity */
+    height: 8px;
+    background: rgba(255, 255, 255, 0.07);
     animation: scan 4s linear infinite;
     pointer-events: none;
     z-index: 100;
@@ -20,28 +25,42 @@
 
   @keyframes scan {
     0% { transform: translateY(-100%); }
-    100% { transform: translateY(100vh); }
+    100% { transform: translateY(100dvh); }
   }
 
   @keyframes rowClearCell {
-    0% { background-color: #FFF; box-shadow: inset 0 0 0 5px #FFF; transform: scale(1); opacity: 1; z-index: 50; }
-    50% { transform: scale(1.1); background-color: #FFF; opacity: 1; }
-    100% { transform: scale(0) rotate(15deg); opacity: 0; filter: blur(2px); }
+    0% {
+      background-color: #FFF;
+      box-shadow: inset 0 0 0 5px #FFF;
+      transform: scale(1);
+      opacity: 1;
+      z-index: 50;
+    }
+    50% {
+      transform: scale(1.05);
+      background-color: #FFF;
+      opacity: 1;
+    }
+    100% {
+      transform: scale(0.1);
+      opacity: 0;
+      filter: blur(2px);
+    }
   }
 
   .anim-row-clear {
-    animation: rowClearCell 0.25s forwards cubic-bezier(0.8, 0, 0.2, 1) !important;
+    animation: rowClearCell 0.22s forwards cubic-bezier(0.8, 0, 0.2, 1) !important;
     position: relative;
     z-index: 10;
   }
 
   @keyframes hardShake {
-    0% { transform: translate(0, 0) rotate(0deg); }
-    20% { transform: translate(-2px, 3px) rotate(-0.5deg); }
-    40% { transform: translate(3px, -2px) rotate(0.5deg); }
-    60% { transform: translate(-3px, -1px) rotate(-0.5deg); }
-    80% { transform: translate(2px, 2px) rotate(0.5deg); }
-    100% { transform: translate(0, 0) rotate(0deg); }
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(-3px, 2px); }
+    40% { transform: translate(3px, -2px); }
+    60% { transform: translate(-2px, -1px); }
+    80% { transform: translate(2px, 1px); }
+    100% { transform: translate(0, 0); }
   }
 
   .anim-shake {
@@ -54,7 +73,7 @@
   }
   
   .anim-lock {
-    animation: lockPulse 0.3s ease-out forwards;
+    animation: lockPulse 0.25s ease-out forwards;
   }
 
   @keyframes hardDropFlash {
@@ -63,7 +82,7 @@
   }
   
   .anim-drop-flash {
-    animation: hardDropFlash 0.15s ease-out forwards;
+    animation: hardDropFlash 0.12s ease-out forwards;
   }
 
   .glitch-flash {
@@ -92,79 +111,50 @@
 
   /* Structural elements from design */
   .grid-bg {
-    background: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-    background-size: 10% 5%; /* Dynamically matches grid cells */
+    background: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 10% 5%; /* Dynamically matches 10x20 grid cells */
   }
 
   .corner {
     position: absolute;
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border: 2px solid white;
     z-index: 10;
   }
-  .corner-tl { top: -6px; left: -6px; border-right: 0; border-bottom: 0; }
-  .corner-tr { top: -6px; right: -6px; border-left: 0; border-bottom: 0; }
-  .corner-bl { bottom: -6px; left: -6px; border-right: 0; border-top: 0; }
-  .corner-br { bottom: -6px; right: -6px; border-left: 0; border-top: 0; }
+  .corner-tl { top: -5px; left: -5px; border-right: 0; border-bottom: 0; }
+  .corner-tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
+  .corner-bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
+  .corner-br { bottom: -5px; right: -5px; border-left: 0; border-top: 0; }
 
   .metadata {
     font-size: 8px;
     color: #A0A0A0;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  
-  .h-header {
-    font-size: 48px;
-    letter-spacing: 0.4em;
-    font-weight: 900;
-    text-transform: uppercase;
-    margin: 0;
-  }
-  
-  .bracket-val {
-    color: white;
-    font-weight: bold;
+    letter-spacing: 0.12em;
+    font-family: var(--font-mono);
   }
 
   .industrial-btn {
     border: 2px solid white;
     background: black;
-    padding: 12px;
+    color: white;
+    padding: 8px 10px;
     text-align: center;
-    font-size: 12px;
-    font-weight: bold;
+    font-family: var(--font-mono);
     cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    box-sizing: border-box;
   }
 
-  .visor {
-    border: 1px solid white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    background-color: black;
-  }
-  .visor::before {
-    content: '';
-    position: absolute;
-    width: 100%;
-    height: 1px;
-    background: white;
-    opacity: 0.2;
-  }
-  .visor::after {
-    content: '';
-    position: absolute;
-    height: 100%;
-    width: 1px;
-    background: white;
-    opacity: 0.2;
+  .industrial-btn:active {
+    transform: translateY(1px);
   }
 
-  /* Uniform Tetromino style updated to perfect negative space boundaries */
+  /* Piece Styling - Digital Brutalism with Inset Negative Space */
   .piece-I, .piece-J, .piece-L, .piece-O, .piece-S, .piece-T, .piece-Z {
     background-color: #000;
     border: 1px solid #000;
@@ -175,13 +165,15 @@
   .piece-ghost {
     background-color: transparent !important;
     border: 1px solid #000;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45) !important;
     box-sizing: border-box;
   }
-  
-  /* Mobile optimized button click feedback */
-  .industrial-btn:active {
-    transform: translateY(2px);
+
+  .piece-locked-preview {
+    background-color: #000;
+    border: 1px solid #000;
+    box-shadow: inset 0 0 0 2px #555;
+    box-sizing: border-box;
   }
 }
 
@@ -192,11 +184,11 @@ body {
   overflow: hidden;
   touch-action: none;
   margin: 0;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  -webkit-font-smoothing: antialiased;
 }
-
-

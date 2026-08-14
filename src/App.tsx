@@ -1,539 +1,863 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  TetrominoType,
+  RotationState,
+  ActivePiece,
+  BoardMatrix,
+  GameStats,
+  GameStatus,
+  LastClearEvent,
+} from './types/tetris';
+import {
+  BOARD_ROWS,
+  BOARD_COLS,
+  LOCK_DELAY_MS,
+  MAX_LOCK_MOVES,
+  TETROMINO_SHAPES,
+  SRS_KICK_TABLE_JLSTZ,
+  SRS_KICK_TABLE_I,
+  getDropInterval,
+  SCORE_SINGLE,
+  SCORE_DOUBLE,
+  SCORE_TRIPLE,
+  SCORE_TETRIS,
+  SCORE_TSPIN_MINI,
+  SCORE_TSPIN_SINGLE,
+  SCORE_TSPIN_DOUBLE,
+  SCORE_TSPIN_TRIPLE,
+  BACK_TO_BACK_MULTIPLIER,
+} from './engine/tetrisConstants';
+import { BagRandomizer } from './engine/bagRandomizer';
+import { synthAudio } from './audio/synthAudio';
+import { HoldPanel } from './components/HoldPanel';
+import { NextQueuePanel } from './components/NextQueuePanel';
+import { ScoreBoard } from './components/ScoreBoard';
+import { GameBoard } from './components/GameBoard';
+import { TouchControls } from './components/TouchControls';
+import { GameOverModal } from './components/GameOverModal';
+import { PauseModal } from './components/PauseModal';
 
-// Constants
-const ROWS = 20;
-const COLS = 10;
-
-// Tetrominoes definitions
-const TETROMINOES = {
-  I: { shape: [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], name: 'I' },
-  J: { shape: [[1,0,0], [1,1,1], [0,0,0]], name: 'J' },
-  L: { shape: [[0,0,1], [1,1,1], [0,0,0]], name: 'L' },
-  O: { shape: [[1,1], [1,1]], name: 'O' },
-  S: { shape: [[0,1,1], [1,1,0], [0,0,0]], name: 'S' },
-  T: { shape: [[0,1,0], [1,1,1], [0,0,0]], name: 'T' },
-  Z: { shape: [[1,1,0], [0,1,1], [0,0,0]], name: 'Z' }
-};
-
-type TetrominoName = keyof typeof TETROMINOES;
-
-const randomTetromino = () => {
-  const keys = Object.keys(TETROMINOES) as TetrominoName[];
-  const key = keys[Math.floor(Math.random() * keys.length)];
-  return TETROMINOES[key];
-};
-
-const createEmptyBoard = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-
-// Custom Hook for DAS (Delayed Auto Shift)
-const useHoldAction = (action: () => void, initialDelay = 180, repeatDelay = 40) => {
-  const timeoutRef = useRef<any>(null);
-  const intervalRef = useRef<any>(null);
-
-  const start = useCallback((e?: React.PointerEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>) => {
-    if (e) {
-      if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
-    }
-    action();
-    clearTimeout(timeoutRef.current);
-    clearInterval(intervalRef.current);
-    timeoutRef.current = setTimeout(() => {
-      intervalRef.current = setInterval(action, repeatDelay);
-    }, initialDelay);
-  }, [action, initialDelay, repeatDelay]);
-
-  const stop = useCallback((e?: React.PointerEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement> | Event) => {
-    if (e) {
-      if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
-    }
-    clearTimeout(timeoutRef.current);
-    clearInterval(intervalRef.current);
-  }, []);
-
-  useEffect(() => {
-    return () => { stop(); };
-  }, [stop]);
-
-  return { onPointerDown: start, onPointerUp: stop, onPointerLeave: stop, onTouchStart: start, onTouchEnd: stop };
-};
-
-// Extracted Clock Component to avoid full re-renders
-const SystemClock = () => {
-  const [clock, setClock] = useState('00:00:00');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setClock(
-        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return <span className="text-xs sm:text-sm font-bold tracking-widest leading-none">[{clock}]</span>;
-};
+const createEmptyBoard = (): BoardMatrix =>
+  Array.from({ length: BOARD_ROWS }, () => Array(BOARD_COLS).fill(null));
 
 export default function App() {
-  const [board, setBoard] = useState<string[][]>(createEmptyBoard());
-  const [currentPiece, setCurrentPiece] = useState<any>(null);
-  const [nextPiece, setNextPiece] = useState<any>(null);
-  const [score, setScore] = useState(0);
-  const [level, setLevel] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
-  const [clearingLines, setClearingLines] = useState<number[]>([]);
-  const [hudFlash, setHudFlash] = useState(false);
-  const [shake, setShake] = useState(false);
-  const [lockCells, setLockCells] = useState<{x:number, y:number}[]>([]);
-  const [dropFlash, setDropFlash] = useState(false);
+  // Game State
+  const [board, setBoard] = useState<BoardMatrix>(createEmptyBoard());
+  const [currentPiece, setCurrentPiece] = useState<ActivePiece | null>(null);
+  const [heldPiece, setHeldPiece] = useState<TetrominoType | null>(null);
+  const [canHold, setCanHold] = useState<boolean>(true);
+  const [nextQueue, setNextQueue] = useState<TetrominoType[]>([]);
+  const [gameStatus, setGameStatus] = useState<GameStatus>('PLAYING');
+  const [isMuted, setIsMuted] = useState<boolean>(synthAudio.getMuted());
 
-  // Refs for game loop and input
+  // Statistics
+  const [stats, setStats] = useState<GameStats>(() => {
+    let savedHighScore = 0;
+    try {
+      savedHighScore = parseInt(localStorage.getItem('sb_tetris_highscore') || '0', 10) || 0;
+    } catch {}
+    return {
+      score: 0,
+      highScore: savedHighScore,
+      lines: 0,
+      level: 0,
+      combo: -1,
+      maxCombo: 0,
+      backToBack: false,
+      b2bCount: 0,
+      singles: 0,
+      doubles: 0,
+      triples: 0,
+      tetrises: 0,
+      tSpins: 0,
+      piecesPlaced: 0,
+      startTime: Date.now(),
+      elapsedSeconds: 0,
+    };
+  });
+
+  // Visual Effects State
+  const [clearingLines, setClearingLines] = useState<number[]>([]);
+  const [lockCells, setLockCells] = useState<{ x: number; y: number }[]>([]);
+  const [dropFlash, setDropFlash] = useState<boolean>(false);
+  const [shake, setShake] = useState<boolean>(false);
+  const [hudFlash, setHudFlash] = useState<boolean>(false);
+  const [lastClear, setLastClear] = useState<LastClearEvent | null>(null);
+  const [isNewHighScore, setIsNewHighScore] = useState<boolean>(false);
+
+  // Engine Refs
+  const bagRef = useRef<BagRandomizer>(new BagRandomizer());
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const dropCounterRef = useRef<number>(0);
-  const dropIntervalRef = useRef<number>(1000);
-  const isProcessingRef = useRef<boolean>(false); // NEW: prevent race conditions during async drops
-  
-  // Ref for the state to avoid capturing stale closures in game loop
+  const lockTimerRef = useRef<number>(0);
+  const lockMovesRef = useRef<number>(0);
+  const isLockingRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
+  const lastMoveWasRotateRef = useRef<boolean>(false);
+
+  // Synchronized stateRef to avoid stale closures in requestAnimationFrame loop
   const stateRef = useRef({
     board,
     currentPiece,
-    nextPiece,
-    score,
-    level,
-    gameOver,
-    clearingLines
+    heldPiece,
+    canHold,
+    nextQueue,
+    gameStatus,
+    stats,
+    clearingLines,
   });
 
   useEffect(() => {
-    stateRef.current = { board, currentPiece, nextPiece, score, level, gameOver, clearingLines };
-  }, [board, currentPiece, nextPiece, score, level, gameOver, clearingLines]);
+    stateRef.current = {
+      board,
+      currentPiece,
+      heldPiece,
+      canHold,
+      nextQueue,
+      gameStatus,
+      stats,
+      clearingLines,
+    };
+  }, [board, currentPiece, heldPiece, canHold, nextQueue, gameStatus, stats, clearingLines]);
 
-  const triggerShake = () => {
+  // Screen Shake Feedback
+  const triggerShake = useCallback(() => {
     setShake(true);
     setTimeout(() => setShake(false), 150);
-  };
+  }, []);
 
-  const checkCollision = (pieceX: number, pieceY: number, matrix: number[][], currentBoard: string[][]) => {
-    for (let y = 0; y < matrix.length; y++) {
-      for (let x = 0; x < matrix[y].length; x++) {
-        if (matrix[y][x] !== 0) {
-          const newX = pieceX + x;
-          const newY = pieceY + y;
-          if (
-            newX < 0 || newX >= COLS || newY >= ROWS ||
-            (newY >= 0 && currentBoard[newY][newX] !== null)
-          ) {
-            return true;
+  // Collision Checking
+  const checkCollision = useCallback(
+    (pieceX: number, pieceY: number, matrix: number[][], currentBoard: BoardMatrix): boolean => {
+      for (let y = 0; y < matrix.length; y++) {
+        for (let x = 0; x < matrix[y].length; x++) {
+          if (matrix[y][x] !== 0) {
+            const targetX = pieceX + x;
+            const targetY = pieceY + y;
+            if (
+              targetX < 0 ||
+              targetX >= BOARD_COLS ||
+              targetY >= BOARD_ROWS ||
+              (targetY >= 0 && currentBoard[targetY][targetX] !== null)
+            ) {
+              return true;
+            }
           }
         }
       }
-    }
-    return false;
-  };
+      return false;
+    },
+    []
+  );
 
-  const calculateGhostY = (pieceX: number, pieceY: number, matrix: number[][], currentBoard: string[][]) => {
-    let ghostY = pieceY;
-    while (!checkCollision(pieceX, ghostY + 1, matrix, currentBoard)) {
-      ghostY++;
-    }
-    return ghostY;
-  };
+  // Calculate Ghost Piece Landing Y
+  const calculateGhostY = useCallback(
+    (piece: ActivePiece, currentBoard: BoardMatrix): number => {
+      let ghostY = piece.y;
+      while (!checkCollision(piece.x, ghostY + 1, piece.matrix, currentBoard)) {
+        ghostY++;
+      }
+      return ghostY;
+    },
+    [checkCollision]
+  );
 
-  const mergePiece = (pieceToMerge: any, currentBoard: string[][]) => {
-    const newBoard = currentBoard.map(row => [...row]);
-    pieceToMerge.matrix.forEach((row: number[], y: number) => {
-      row.forEach((value: number, x: number) => {
-        if (value !== 0) {
-          const boardY = pieceToMerge.y + y;
-          const boardX = pieceToMerge.x + x;
-          if (boardY >= 0 && boardY < ROWS && boardX >= 0 && boardX < COLS) {
-            newBoard[boardY][boardX] = pieceToMerge.name;
+  // Spawn New Piece from 7-Bag
+  const spawnPiece = useCallback(
+    (typeToSpawn?: TetrominoType, boardToCheck?: BoardMatrix): boolean => {
+      const type = typeToSpawn || bagRef.current.next();
+      setNextQueue(bagRef.current.peek(3));
+
+      const rotation: RotationState = 0;
+      const matrix = TETROMINO_SHAPES[type][rotation];
+      const x = Math.floor((BOARD_COLS - matrix[0].length) / 2);
+      const y = type === 'I' ? -1 : 0;
+      const targetBoard = boardToCheck || stateRef.current.board;
+
+      if (checkCollision(x, y, matrix, targetBoard)) {
+        // Spawn collision -> Game Over
+        setGameStatus('GAMEOVER');
+        synthAudio.playGameOver();
+        return false;
+      }
+
+      const newPiece: ActivePiece = { type, rotation, x, y, matrix };
+      setCurrentPiece(newPiece);
+      setCanHold(true);
+      lockTimerRef.current = 0;
+      lockMovesRef.current = 0;
+      isLockingRef.current = false;
+      lastMoveWasRotateRef.current = false;
+      return true;
+    },
+    [checkCollision]
+  );
+
+  // Merge Locked Piece into Grid
+  const mergePiece = useCallback(
+    (piece: ActivePiece, currentBoard: BoardMatrix): BoardMatrix => {
+      const newBoard = currentBoard.map((row) => [...row]);
+      piece.matrix.forEach((row, y) => {
+        row.forEach((val, x) => {
+          if (val !== 0) {
+            const bY = piece.y + y;
+            const bX = piece.x + x;
+            if (bY >= 0 && bY < BOARD_ROWS && bX >= 0 && bX < BOARD_COLS) {
+              newBoard[bY][bX] = piece.type;
+            }
           }
+        });
+      });
+      return newBoard;
+    },
+    []
+  );
+
+  // Check for T-Spin (3-Corner Rule)
+  const detectTSpin = useCallback(
+    (piece: ActivePiece, currentBoard: BoardMatrix): { isTSpin: boolean; isMini: boolean } => {
+      if (piece.type !== 'T' || !lastMoveWasRotateRef.current) {
+        return { isTSpin: false, isMini: false };
+      }
+
+      // Check 4 diagonals around center of 3x3 T
+      const corners = [
+        [piece.x, piece.y],         // Top-Left
+        [piece.x + 2, piece.y],     // Top-Right
+        [piece.x, piece.y + 2],     // Bottom-Left
+        [piece.x + 2, piece.y + 2], // Bottom-Right
+      ];
+
+      let occupiedCorners = 0;
+      corners.forEach(([cx, cy]) => {
+        if (
+          cx < 0 ||
+          cx >= BOARD_COLS ||
+          cy >= BOARD_ROWS ||
+          (cy >= 0 && currentBoard[cy][cx] !== null)
+        ) {
+          occupiedCorners++;
         }
       });
-    });
-    return newBoard;
-  };
 
-  const spawnPiece = () => {
-    const { nextPiece } = stateRef.current;
-    const newPiece = nextPiece ? nextPiece : randomTetromino();
-    const newNextPiece = randomTetromino();
-    
-    const matrix = newPiece.shape;
-    const x = Math.floor((COLS - matrix[0].length) / 2);
-    const y = -1;
-
-    if (checkCollision(x, y, matrix, stateRef.current.board)) {
-      setGameOver(true);
-      return null;
-    }
-
-    const cp = { name: newPiece.name, matrix: matrix, x, y };
-    setCurrentPiece(cp);
-    setNextPiece(newNextPiece);
-    return cp;
-  };
-
-  const clearLines = async (currentBoard: string[][]) => {
-    const linesToClear: number[] = [];
-    currentBoard.forEach((row, y) => {
-      if (row.every(cell => cell !== null)) {
-        linesToClear.push(y);
+      if (occupiedCorners >= 3) {
+        return { isTSpin: true, isMini: false };
       }
-    });
+      return { isTSpin: false, isMini: false };
+    },
+    []
+  );
 
-    if (linesToClear.length > 0) {
-      setClearingLines(linesToClear);
-      triggerShake();
-      
-      const lineScores = [0, 40, 100, 300, 1200];
-      const { score, level } = stateRef.current;
-      const newScore = score + lineScores[linesToClear.length] * (level + 1);
-      const newLevel = Math.floor(newScore / 400); 
-      
-      setScore(newScore);
-      setLevel(newLevel);
-      dropIntervalRef.current = Math.max(100, 1000 - (newLevel * 100));
+  // Line Clear and Scoring Routine
+  const clearLinesRoutine = useCallback(
+    async (currentBoard: BoardMatrix, pieceLocked: ActivePiece) => {
+      const fullRowIndices: number[] = [];
+      currentBoard.forEach((row, y) => {
+        if (row.every((cell) => cell !== null && cell !== 'ghost')) {
+          fullRowIndices.push(y);
+        }
+      });
 
-      // Wait for CSS animation
-      await new Promise(resolve => setTimeout(resolve, 250));
-      
-      const newBoard = currentBoard.filter((_, idx) => !linesToClear.includes(idx));
-      while (newBoard.length < ROWS) {
-        newBoard.unshift(Array(COLS).fill(null));
+      const lineCount = fullRowIndices.length;
+      const { isTSpin, isMini } = detectTSpin(pieceLocked, currentBoard);
+
+      if (lineCount > 0) {
+        setClearingLines(fullRowIndices);
+        triggerShake();
+
+        const isTetris = lineCount === 4;
+        synthAudio.playLineClear(lineCount, isTetris, isTSpin);
+
+        // Calculate Points & Bonuses
+        setStats((prev) => {
+          const currentLevel = prev.level;
+          let basePoints = 0;
+          let clearType: LastClearEvent['type'] = null;
+          let isB2B = prev.backToBack;
+
+          if (isTSpin) {
+            if (lineCount === 1) {
+              basePoints = SCORE_TSPIN_SINGLE * (currentLevel + 1);
+              clearType = 'TSPIN_SINGLE';
+            } else if (lineCount === 2) {
+              basePoints = SCORE_TSPIN_DOUBLE * (currentLevel + 1);
+              clearType = 'TSPIN_DOUBLE';
+            } else if (lineCount === 3) {
+              basePoints = SCORE_TSPIN_TRIPLE * (currentLevel + 1);
+              clearType = 'TSPIN_TRIPLE';
+            }
+          } else if (isMini) {
+            basePoints = SCORE_TSPIN_MINI * (currentLevel + 1);
+            clearType = 'TSPIN_MINI';
+          } else {
+            if (lineCount === 1) {
+              basePoints = SCORE_SINGLE * (currentLevel + 1);
+              clearType = 'SINGLE';
+            } else if (lineCount === 2) {
+              basePoints = SCORE_DOUBLE * (currentLevel + 1);
+              clearType = 'DOUBLE';
+            } else if (lineCount === 3) {
+              basePoints = SCORE_TRIPLE * (currentLevel + 1);
+              clearType = 'TRIPLE';
+            } else if (lineCount === 4) {
+              basePoints = SCORE_TETRIS * (currentLevel + 1);
+              clearType = 'TETRIS';
+            }
+          }
+
+          const hardClear = isTetris || isTSpin;
+          let b2bMultiplier = 1;
+          if (hardClear && isB2B) {
+            b2bMultiplier = BACK_TO_BACK_MULTIPLIER;
+          }
+
+          const newCombo = prev.combo + 1;
+          const comboBonus = newCombo > 0 ? 50 * newCombo * (currentLevel + 1) : 0;
+          const totalPoints = Math.floor(basePoints * b2bMultiplier) + comboBonus;
+
+          const newScore = prev.score + totalPoints;
+          const newLines = prev.lines + lineCount;
+          const newLevel = Math.floor(newLines / 10);
+
+          if (newLevel > prev.level) {
+            synthAudio.playLevelUp();
+          }
+
+          const updatedHighScore = Math.max(prev.highScore, newScore);
+          if (newScore > prev.highScore) {
+            setIsNewHighScore(true);
+            try {
+              localStorage.setItem('sb_tetris_highscore', String(newScore));
+            } catch {}
+          }
+
+          setLastClear({
+            type: clearType,
+            lines: lineCount,
+            points: totalPoints,
+            combo: newCombo,
+            b2b: hardClear && isB2B,
+            timestamp: Date.now(),
+          });
+
+          return {
+            ...prev,
+            score: newScore,
+            highScore: updatedHighScore,
+            lines: newLines,
+            level: newLevel,
+            combo: newCombo,
+            maxCombo: Math.max(prev.maxCombo, newCombo),
+            backToBack: hardClear,
+            b2bCount: hardClear && isB2B ? prev.b2bCount + 1 : prev.b2bCount,
+            singles: lineCount === 1 ? prev.singles + 1 : prev.singles,
+            doubles: lineCount === 2 ? prev.doubles + 1 : prev.doubles,
+            triples: lineCount === 3 ? prev.triples + 1 : prev.triples,
+            tetrises: lineCount === 4 ? prev.tetrises + 1 : prev.tetrises,
+            tSpins: isTSpin ? prev.tSpins + 1 : prev.tSpins,
+            piecesPlaced: prev.piecesPlaced + 1,
+          };
+        });
+
+        // Clear animation delay
+        await new Promise((resolve) => setTimeout(resolve, 220));
+
+        const updatedBoard = currentBoard.filter((_, idx) => !fullRowIndices.includes(idx));
+        while (updatedBoard.length < BOARD_ROWS) {
+          updatedBoard.unshift(Array(BOARD_COLS).fill(null));
+        }
+
+        setClearingLines([]);
+        return updatedBoard;
+      } else {
+        // Combo reset if no lines cleared
+        setStats((prev) => ({
+          ...prev,
+          combo: -1,
+          piecesPlaced: prev.piecesPlaced + 1,
+        }));
+        return currentBoard;
       }
-      
-      setClearingLines([]);
-      return newBoard;
-    }
-    return currentBoard;
-  };
+    },
+    [detectTSpin, triggerShake]
+  );
 
-  const drop = async () => {
-    const { currentPiece, board } = stateRef.current;
-    if (!currentPiece || isProcessingRef.current) return;
-
-    dropCounterRef.current = 0; // Synchronous reset to avoid race conditions
-
-    if (!checkCollision(currentPiece.x, currentPiece.y + 1, currentPiece.matrix, board)) {
-      setCurrentPiece({ ...currentPiece, y: currentPiece.y + 1 });
-    } else {
+  // Lock Active Piece
+  const lockPiece = useCallback(
+    async (pieceToLock: ActivePiece) => {
+      if (isProcessingRef.current) return;
       isProcessingRef.current = true;
-      let newBoard = mergePiece(currentPiece, board);
-      setBoard(Object.assign([...newBoard]));
-      
-      const lockedCoords: {x:number, y:number}[] = [];
-      currentPiece.matrix.forEach((row: number[], y: number) => row.forEach((val: number, x: number) => {
-         if (val !== 0) lockedCoords.push({ x: currentPiece.x + x, y: currentPiece.y + y });
-      }));
-      setLockCells(lockedCoords);
-      setTimeout(() => setLockCells([]), 300);
 
+      synthAudio.playLock();
+
+      const coords: { x: number; y: number }[] = [];
+      pieceToLock.matrix.forEach((row, y) =>
+        row.forEach((val, x) => {
+          if (val !== 0) coords.push({ x: pieceToLock.x + x, y: pieceToLock.y + y });
+        })
+      );
+      setLockCells(coords);
+      setTimeout(() => setLockCells([]), 250);
+
+      const merged = mergePiece(pieceToLock, stateRef.current.board);
+      setBoard(merged);
       setCurrentPiece(null);
 
-      newBoard = await clearLines(newBoard);
-      
-      if (!stateRef.current.gameOver) {
-        setBoard(newBoard);
+      const cleanedBoard = await clearLinesRoutine(merged, pieceToLock);
+
+      if (stateRef.current.gameStatus !== 'GAMEOVER') {
+        setBoard(cleanedBoard);
         spawnPiece();
       }
       isProcessingRef.current = false;
-    }
-  };
+    },
+    [mergePiece, clearLinesRoutine, spawnPiece]
+  );
 
-  const moveLeft = () => {
-    const { currentPiece, board, gameOver } = stateRef.current;
-    if (gameOver || !currentPiece || isProcessingRef.current) return;
+  // Move Left
+  const moveLeft = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
     if (!checkCollision(currentPiece.x - 1, currentPiece.y, currentPiece.matrix, board)) {
       setCurrentPiece({ ...currentPiece, x: currentPiece.x - 1 });
-    }
-  };
+      synthAudio.playMove();
+      lastMoveWasRotateRef.current = false;
 
-  const moveRight = () => {
-    const { currentPiece, board, gameOver } = stateRef.current;
-    if (gameOver || !currentPiece || isProcessingRef.current) return;
+      // Lock delay extension on valid movement
+      if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
+        lockTimerRef.current = 0;
+        lockMovesRef.current++;
+      }
+    }
+  }, [checkCollision]);
+
+  // Move Right
+  const moveRight = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
     if (!checkCollision(currentPiece.x + 1, currentPiece.y, currentPiece.matrix, board)) {
       setCurrentPiece({ ...currentPiece, x: currentPiece.x + 1 });
-    }
-  };
+      synthAudio.playMove();
+      lastMoveWasRotateRef.current = false;
 
-  const rotate = () => {
-    const { currentPiece, board, gameOver } = stateRef.current;
-    if (gameOver || !currentPiece || isProcessingRef.current) return;
-
-    // Transpose and reverse rows (90deg clockwise)
-    const transposed = currentPiece.matrix[0].map((_: any, i: number) => 
-      currentPiece.matrix.map((row: any[]) => row[i])
-    );
-    const rotatedMatrix = transposed.map((row: any[]) => row.reverse());
-
-    if (!checkCollision(currentPiece.x, currentPiece.y, rotatedMatrix, board)) {
-      setCurrentPiece({ ...currentPiece, matrix: rotatedMatrix });
-      setHudFlash(true); setTimeout(() => setHudFlash(false), 100);
-    } else {
-      // Basic wall kicks
-      if (!checkCollision(currentPiece.x + 1, currentPiece.y, rotatedMatrix, board)) {
-        setCurrentPiece({ ...currentPiece, matrix: rotatedMatrix, x: currentPiece.x + 1 });
-        setHudFlash(true); setTimeout(() => setHudFlash(false), 100);
-      } else if (!checkCollision(currentPiece.x - 1, currentPiece.y, rotatedMatrix, board)) {
-        setCurrentPiece({ ...currentPiece, matrix: rotatedMatrix, x: currentPiece.x - 1 });
-        setHudFlash(true); setTimeout(() => setHudFlash(false), 100);
+      // Lock delay extension on valid movement
+      if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
+        lockTimerRef.current = 0;
+        lockMovesRef.current++;
       }
     }
-  };
+  }, [checkCollision]);
 
-  const hardDrop = () => {
-    const { currentPiece, board, gameOver } = stateRef.current;
-    if (gameOver || !currentPiece || isProcessingRef.current) return;
+  // Soft Drop (Down)
+  const softDrop = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
 
-    const ghostY = calculateGhostY(currentPiece.x, currentPiece.y, currentPiece.matrix, board);
+    if (!checkCollision(currentPiece.x, currentPiece.y + 1, currentPiece.matrix, board)) {
+      setCurrentPiece({ ...currentPiece, y: currentPiece.y + 1 });
+      setStats((prev) => ({ ...prev, score: prev.score + 1 }));
+      lastMoveWasRotateRef.current = false;
+      dropCounterRef.current = 0;
+    } else {
+      isLockingRef.current = true;
+    }
+  }, [checkCollision]);
+
+  // Super Rotation System (SRS) - Clockwise (CW)
+  const rotateCW = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
+    if (currentPiece.type === 'O') return; // O piece does not rotate
+
+    const currentRotation = currentPiece.rotation;
+    const nextRotation = ((currentRotation + 1) % 4) as RotationState;
+    const nextMatrix = TETROMINO_SHAPES[currentPiece.type][nextRotation];
+    const kickKey = `${currentRotation}->${nextRotation}`;
+    const kickTable =
+      currentPiece.type === 'I' ? SRS_KICK_TABLE_I[kickKey] : SRS_KICK_TABLE_JLSTZ[kickKey];
+
+    if (!kickTable) return;
+
+    for (const [kx, ky] of kickTable) {
+      const targetX = currentPiece.x + kx;
+      const targetY = currentPiece.y - ky; // SRS kick table +y is UP in grid coords
+
+      if (!checkCollision(targetX, targetY, nextMatrix, board)) {
+        setCurrentPiece({
+          ...currentPiece,
+          rotation: nextRotation,
+          matrix: nextMatrix,
+          x: targetX,
+          y: targetY,
+        });
+        synthAudio.playRotate();
+        setHudFlash(true);
+        setTimeout(() => setHudFlash(false), 80);
+        lastMoveWasRotateRef.current = true;
+
+        // Reset lock timer on successful rotation
+        if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
+          lockTimerRef.current = 0;
+          lockMovesRef.current++;
+        }
+        return;
+      }
+    }
+  }, [checkCollision]);
+
+  // Super Rotation System (SRS) - Counter-Clockwise (CCW)
+  const rotateCCW = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
+    if (currentPiece.type === 'O') return;
+
+    const currentRotation = currentPiece.rotation;
+    const nextRotation = ((currentRotation + 3) % 4) as RotationState;
+    const nextMatrix = TETROMINO_SHAPES[currentPiece.type][nextRotation];
+    const kickKey = `${currentRotation}->${nextRotation}`;
+    const kickTable =
+      currentPiece.type === 'I' ? SRS_KICK_TABLE_I[kickKey] : SRS_KICK_TABLE_JLSTZ[kickKey];
+
+    if (!kickTable) return;
+
+    for (const [kx, ky] of kickTable) {
+      const targetX = currentPiece.x + kx;
+      const targetY = currentPiece.y - ky;
+
+      if (!checkCollision(targetX, targetY, nextMatrix, board)) {
+        setCurrentPiece({
+          ...currentPiece,
+          rotation: nextRotation,
+          matrix: nextMatrix,
+          x: targetX,
+          y: targetY,
+        });
+        synthAudio.playRotate();
+        setHudFlash(true);
+        setTimeout(() => setHudFlash(false), 80);
+        lastMoveWasRotateRef.current = true;
+
+        if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
+          lockTimerRef.current = 0;
+          lockMovesRef.current++;
+        }
+        return;
+      }
+    }
+  }, [checkCollision]);
+
+  // Instant Gravity (Hard Drop)
+  const hardDrop = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
+    const ghostY = calculateGhostY(currentPiece, board);
+    const droppedDistance = ghostY - currentPiece.y;
+
     triggerShake();
     setDropFlash(true);
-    setTimeout(() => setDropFlash(false), 150);
-    const newPiece = { ...currentPiece, y: ghostY };
-    setCurrentPiece(newPiece);
-    dropCounterRef.current = dropIntervalRef.current; 
-  };
+    setTimeout(() => setDropFlash(false), 120);
+    synthAudio.playHardDrop();
 
-  // Hold Action bindings
-  const leftHoldParams = useHoldAction(moveLeft);
-  const rightHoldParams = useHoldAction(moveRight);
-  const fastDropParams = useHoldAction(drop, 0, 40);
+    setStats((prev) => ({
+      ...prev,
+      score: prev.score + Math.max(0, droppedDistance * 2),
+    }));
 
-  // Input listener
+    const droppedPiece = { ...currentPiece, y: ghostY };
+    setCurrentPiece(droppedPiece);
+    lockPiece(droppedPiece);
+  }, [calculateGhostY, triggerShake, lockPiece]);
+
+  // Hold Piece Action
+  const holdCurrentPiece = useCallback(() => {
+    const { currentPiece, heldPiece, canHold, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || !canHold || isProcessingRef.current) return;
+
+    synthAudio.playHold();
+    setCanHold(false);
+    const pieceTypeToHold = currentPiece.type;
+
+    if (heldPiece === null) {
+      setHeldPiece(pieceTypeTypeOrNull(pieceTypeToHold));
+      spawnPiece();
+    } else {
+      setHeldPiece(pieceTypeTypeOrNull(pieceTypeToHold));
+      spawnPiece(heldPiece);
+    }
+  }, [spawnPiece]);
+
+  function pieceTypeTypeOrNull(type: TetrominoType): TetrominoType {
+    return type;
+  }
+
+  // Toggle Pause
+  const togglePause = useCallback(() => {
+    setGameStatus((prev) => {
+      if (prev === 'PLAYING') return 'PAUSED';
+      if (prev === 'PAUSED') return 'PLAYING';
+      return prev;
+    });
+  }, []);
+
+  // Toggle Sound Mute
+  const handleToggleMute = useCallback(() => {
+    const muted = synthAudio.toggleMute();
+    setIsMuted(muted);
+  }, []);
+
+  // Reset / Restart Game
+  const resetGame = useCallback(() => {
+    const empty = createEmptyBoard();
+    bagRef.current.reset();
+    setBoard(empty);
+    setCurrentPiece(null);
+    setHeldPiece(null);
+    setCanHold(true);
+    setNextQueue(bagRef.current.peek(3));
+    setGameStatus('PLAYING');
+    setClearingLines([]);
+    setLockCells([]);
+    setLastClear(null);
+    setIsNewHighScore(false);
+    isProcessingRef.current = false;
+    dropCounterRef.current = 0;
+    lockTimerRef.current = 0;
+    lockMovesRef.current = 0;
+    isLockingRef.current = false;
+
+    setStats((prev) => ({
+      score: 0,
+      highScore: prev.highScore,
+      lines: 0,
+      level: 0,
+      combo: -1,
+      maxCombo: 0,
+      backToBack: false,
+      b2bCount: 0,
+      singles: 0,
+      doubles: 0,
+      triples: 0,
+      tetrises: 0,
+      tSpins: 0,
+      piecesPlaced: 0,
+      startTime: Date.now(),
+      elapsedSeconds: 0,
+    }));
+
+    spawnPiece(undefined, empty);
+  }, [spawnPiece]);
+
+  // Master Keyboard Event Handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent zooming/navigating backwards in browsers
-      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
+      // Prevent default page scroll on game keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Tab'].includes(e.key)) {
         e.preventDefault();
       }
-      if (stateRef.current.gameOver || isProcessingRef.current) return;
+
+      if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+        togglePause();
+        return;
+      }
+
+      if (e.key === 'm' || e.key === 'M') {
+        handleToggleMute();
+        return;
+      }
+
+      if (stateRef.current.gameStatus !== 'PLAYING' || isProcessingRef.current) return;
 
       switch (e.key) {
-        case 'ArrowLeft': moveLeft(); break;
-        case 'ArrowRight': moveRight(); break;
-        case 'ArrowDown': drop(); break;
-        case 'ArrowUp': rotate(); break;
-        case ' ': hardDrop(); break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          moveLeft();
+          break;
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          moveRight();
+          break;
+        case 'ArrowDown':
+        case 's':
+        case 'S':
+          softDrop();
+          break;
+        case 'ArrowUp':
+        case 'w':
+        case 'W':
+        case 'x':
+        case 'X':
+          rotateCW();
+          break;
+        case 'z':
+        case 'Z':
+          rotateCCW();
+          break;
+        case ' ':
+          hardDrop();
+          break;
+        case 'c':
+        case 'C':
+        case 'Shift':
+          holdCurrentPiece();
+          break;
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown, { passive: false });
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [moveLeft, moveRight, softDrop, rotateCW, rotateCCW, hardDrop, holdCurrentPiece, togglePause, handleToggleMute]);
 
-  // Game Loop
-  const gameLoop = (time = 0) => {
-    if (stateRef.current.gameOver || isProcessingRef.current) {
+  // Main 60 FPS Game Loop
+  const gameLoop = useCallback(
+    (time: number) => {
+      if (!lastTimeRef.current) lastTimeRef.current = time;
+      const deltaTime = time - lastTimeRef.current;
+      lastTimeRef.current = time;
+
+      const { gameStatus, currentPiece, board, stats } = stateRef.current;
+
+      if (gameStatus === 'PLAYING' && !isProcessingRef.current) {
+        // Track uptime
+        setStats((prev) => ({
+          ...prev,
+          elapsedSeconds: Math.floor((Date.now() - prev.startTime) / 1000),
+        }));
+
+        if (!currentPiece) {
+          spawnPiece();
+        } else {
+          const isTouchingBottom = checkCollision(
+            currentPiece.x,
+            currentPiece.y + 1,
+            currentPiece.matrix,
+            board
+          );
+
+          if (isTouchingBottom) {
+            isLockingRef.current = true;
+            lockTimerRef.current += deltaTime;
+
+            if (lockTimerRef.current >= LOCK_DELAY_MS) {
+              lockPiece(currentPiece);
+            }
+          } else {
+            isLockingRef.current = false;
+            lockTimerRef.current = 0;
+            dropCounterRef.current += deltaTime;
+
+            const currentInterval = getDropInterval(stats.level);
+            if (dropCounterRef.current >= currentInterval) {
+              dropCounterRef.current = 0;
+              if (!checkCollision(currentPiece.x, currentPiece.y + 1, currentPiece.matrix, board)) {
+                setCurrentPiece({ ...currentPiece, y: currentPiece.y + 1 });
+                lastMoveWasRotateRef.current = false;
+              }
+            }
+          }
+        }
+      }
+
       requestRef.current = requestAnimationFrame(gameLoop);
-      return;
-    }
+    },
+    [checkCollision, lockPiece, spawnPiece]
+  );
 
-    if (!stateRef.current.currentPiece) {
-      spawnPiece();
-    }
-
-    const deltaTime = time - lastTimeRef.current;
-    lastTimeRef.current = time;
-    dropCounterRef.current += deltaTime;
-
-    // Tick Drop
-    if (dropCounterRef.current > dropIntervalRef.current) {
-      drop();
-    }
-
-    requestRef.current = requestAnimationFrame(gameLoop);
-  };
-
+  // Mount & Initial Spawn
   useEffect(() => {
+    setNextQueue(bagRef.current.peek(3));
+    spawnPiece();
     requestRef.current = requestAnimationFrame(gameLoop);
+
     return () => cancelAnimationFrame(requestRef.current);
   }, []);
 
-  const resetGame = () => {
-    setBoard(createEmptyBoard());
-    setCurrentPiece(null);
-    setNextPiece(null);
-    setScore(0);
-    setLevel(0);
-    setGameOver(false);
-    setClearingLines([]);
-    isProcessingRef.current = false;
-    dropIntervalRef.current = 1000;
-  };
-
-  const renderBoardGrid = () => {
-    const displayBoard = board.map(row => [...row]);
-    let ghostY = -1;
-
-    if (currentPiece && !isProcessingRef.current) {
-      ghostY = calculateGhostY(currentPiece.x, currentPiece.y, currentPiece.matrix, board);
-
-      // Draw ghost
-      if (ghostY > currentPiece.y) {
-        currentPiece.matrix.forEach((row: number[], y: number) => {
-          row.forEach((value: number, x: number) => {
-             if (value !== 0) {
-               const bY = ghostY + y;
-               const bX = currentPiece.x + x;
-               if (bY >= 0 && bY < ROWS && bX >= 0 && bX < COLS) {
-                 if (!displayBoard[bY][bX]) displayBoard[bY][bX] = 'ghost';
-               }
-             }
-          });
-        });
-      }
-
-      // Draw solid piece
-      currentPiece.matrix.forEach((row: number[], y: number) => {
-        row.forEach((value: number, x: number) => {
-           if (value !== 0) {
-             const bY = currentPiece.y + y;
-             const bX = currentPiece.x + x;
-             if (bY >= 0 && bY < ROWS && bX >= 0 && bX < COLS) {
-               displayBoard[bY][bX] = currentPiece.name;
-             }
-           }
-        });
-      });
-    }
-
-    const cells = [];
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        let type = displayBoard[y][x];
-        let isLocking = lockCells.some(lc => lc.x === x && lc.y === y);
-        cells.push(
-           <div
-             key={`cell-${x}-${y}`}
-             className={`w-full h-full box-border ${type ? `piece-${type}` : ''} ${isLocking ? 'anim-lock' : ''} ${clearingLines.includes(y) ? 'anim-row-clear' : ''}`}
-           />
-        );
-      }
-    }
-    return cells;
-  };
-  
-  const renderNextPiece = () => {
-    if (!nextPiece) return null;
-    const matrix = nextPiece.shape;
-    return (
-      <div className="grid gap-0 place-content-center w-full h-full" style={{ gridTemplateColumns: `repeat(${matrix[0].length}, 12px)`, gridTemplateRows: `repeat(${matrix.length}, 12px)` }}>
-        {matrix.map((row: number[], y: number) => 
-          row.map((val: number, x: number) => (
-            <div 
-              key={`n-cell-${x}-${y}`} 
-              className={`w-full h-full box-border ${val ? `piece-${nextPiece.name}` : 'bg-transparent'}`} 
-            />
-          ))
-        )}
-      </div>
-    );
-  };
+  const ghostY =
+    currentPiece && !isProcessingRef.current
+      ? calculateGhostY(currentPiece, board)
+      : -1;
 
   return (
-    <div className={`w-full h-dvh bg-black text-white flex flex-col items-center font-mono relative overflow-hidden select-none touch-none ${shake ? 'anim-shake' : ''} ${hudFlash ? 'hud-flash' : ''} max-w-md mx-auto`}>
+    <div
+      className={`w-full h-dvh bg-black text-white flex flex-col items-center justify-between font-mono relative overflow-hidden select-none touch-none ${
+        shake ? 'anim-shake' : ''
+      } ${hudFlash ? 'hud-flash' : ''} max-w-md mx-auto`}
+    >
       <div className="scanline"></div>
 
-      {/* HEADER SECTION (Strictly optimized for Vertical) */}
-      <div className="w-full flex-shrink-0 p-4 pb-2 z-10 antialiased flex justify-between items-start pt-6">
-        <div className="space-y-1 w-1/3">
-          <div className="metadata">SYSTEM_CLOCK</div>
-          <SystemClock />
+      {/* HEADER & SCORE TELEMETRY */}
+      <div className="w-full flex-shrink-0 px-3 pt-3 pb-1 z-20">
+        <ScoreBoard
+          stats={stats}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          onPause={togglePause}
+          isPaused={gameStatus === 'PAUSED'}
+        />
+      </div>
+
+      {/* MAIN PLAYFIELD & SIDE PANELS (Vertical Ergonomic Layout) */}
+      <div className="flex-1 w-full min-h-0 flex items-center justify-center gap-2 px-2 z-10">
+        {/* Left Side: Hold Panel */}
+        <div className="flex flex-col items-center justify-start h-full pt-2">
+          <HoldPanel heldPiece={heldPiece} canHold={canHold} onHoldClick={holdCurrentPiece} />
         </div>
 
-        <div className="w-1/3 flex flex-col items-center relative -mt-2">
-            <span className="metadata absolute -top-4 bg-black px-1 z-10 w-max">NEXT_MEM</span>
-            <div className="visor w-16 h-16 sm:w-20 sm:h-20 bg-black/50">
-                <div className="z-10 bg-black/90 p-1 rounded-full">{renderNextPiece()}</div>
-            </div>
-            <span className="metadata absolute -bottom-3 w-max">BUFFER_{String(level).padStart(2, '0')}</span>
+        {/* Center: 10x20 Game Board */}
+        <div className="h-full flex items-center justify-center flex-1 min-w-0 max-w-full">
+          <GameBoard
+            board={board}
+            currentPiece={currentPiece}
+            ghostY={ghostY}
+            clearingLines={clearingLines}
+            lockCells={lockCells}
+            dropFlash={dropFlash}
+            lastClear={lastClear}
+          />
         </div>
 
-        <div className="space-y-1 w-1/3 text-right">
-          <div className="metadata">BYTE_COUNT</div>
-          <div className="text-xs sm:text-sm font-bold tracking-[0.2em] leading-none">[{String(score).padStart(6, '0')}]</div>
+        {/* Right Side: Next Queue Panel */}
+        <div className="flex flex-col items-center justify-start h-full pt-2">
+          <NextQueuePanel queue={nextQueue} />
         </div>
       </div>
 
-      {/* PLAYFIELD SECTION */}
-      <div className="flex-1 w-full flex items-center justify-center min-h-0 relative z-10 px-4 mt-2">
-        <div className="h-full aspect-[10/20] max-w-full relative border-2 border-white bg-black grid-bg flex-shrink-0">
-          <div className="corner corner-tl z-20"></div>
-          <div className="corner corner-tr z-20"></div>
-          <div className="corner corner-bl z-20"></div>
-          <div className="corner corner-br z-20"></div>
+      {/* TACTILE TOUCH CONTROLS (Ergonomic for vertical screens) */}
+      <TouchControls
+        onMoveLeft={moveLeft}
+        onMoveRight={moveRight}
+        onSoftDrop={softDrop}
+        onHardDrop={hardDrop}
+        onRotateCW={rotateCW}
+        onRotateCCW={rotateCCW}
+        onHold={holdCurrentPiece}
+        disabled={gameStatus !== 'PLAYING'}
+      />
 
-          <div className={`w-full h-full absolute inset-0 z-10 grid gap-0 ${dropFlash ? 'anim-drop-flash' : ''}`} style={{ gridTemplateColumns: 'repeat(10, 1fr)', gridTemplateRows: 'repeat(20, 1fr)' }}>
-            {renderBoardGrid()}
-          </div>
+      {/* MODALS */}
+      {gameStatus === 'PAUSED' && (
+        <PauseModal
+          onResume={togglePause}
+          onRestart={resetGame}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+        />
+      )}
 
-          {gameOver && (
-            <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-50 text-center p-4">
-              <span className="text-red-500 font-bold tracking-widest text-xl glitch-flash mb-2 uppercase">FATAL_ERROR</span>
-              <span className="text-white text-sm mt-2 font-bold uppercase tracking-[0.2em]">HEAP_OVERFLOW</span>
-              <span className="metadata mt-1">// SYSTEM_HALTED //</span>
-              <button 
-                onClick={resetGame}
-                className="mt-8 industrial-btn bg-white !text-black hover:bg-black hover:!text-white transition-colors"
-                onTouchStart={resetGame}
-              >
-                REBOOT_SYSTEM()
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CONTROLS SECTION */}
-      <div className="w-full flex-shrink-0 px-4 py-4 z-10 pb-8 sm:pb-12">
-        <div className="metadata text-center mb-2">COMMAND_CENTER // TACTILE_INPUT_REQUIRED</div>
-        
-        <div className="grid grid-cols-3 gap-2 w-full h-36 sm:h-44">
-            <button 
-                className="col-span-3 industrial-btn active:bg-white active:!text-black transition-colors flex items-center justify-center tracking-widest text-sm sm:text-base"
-                onPointerDown={(e) => { e.preventDefault(); rotate(); }}
-            >
-                [ ROTATE ]
-            </button>
-            
-            <button 
-                className="col-span-1 industrial-btn active:bg-white active:!text-black transition-colors flex items-center justify-center text-lg sm:text-xl font-black"
-                {...leftHoldParams}
-                style={{touchAction: 'manipulation'}}
-            >
-                {"<"}
-            </button>
-            
-            <button 
-                className="col-span-1 industrial-btn active:bg-white active:!text-black transition-colors flex items-center justify-center text-lg sm:text-xl font-black tracking-widest"
-                {...fastDropParams}
-            >
-                DROP
-            </button>
-            
-            <button 
-                className="col-span-1 industrial-btn active:bg-white active:!text-black transition-colors flex items-center justify-center text-lg sm:text-xl font-black"
-                {...rightHoldParams}
-            >
-                {">"}
-            </button>
-
-            <button 
-                className="col-span-3 industrial-btn bg-white !text-black active:bg-black active:!text-white transition-colors flex flex-col items-center justify-center tracking-widest"
-                onPointerDown={(e) => { e.preventDefault(); hardDrop(); }}
-            >
-                <span className="text-[10px] leading-none mb-1 font-black">INSTANT_GRAVITY</span>
-            </button>
-        </div>
-      </div>
+      {gameStatus === 'GAMEOVER' && (
+        <GameOverModal
+          stats={stats}
+          isNewHighScore={isNewHighScore}
+          onRestart={resetGame}
+        />
+      )}
     </div>
   );
 }
-
