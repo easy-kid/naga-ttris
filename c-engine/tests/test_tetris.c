@@ -242,7 +242,7 @@ static bool test_game_over_on_overflow() {
 
 int main() {
     printf("=====================================================\n");
-    printf("=== RUNNING SB-TETRIS (VOID_STACK) C CORE TESTS ===\n");
+    printf("=== RUNNING NAGA-TTRIS (VOID_STACK) C CORE TESTS ===\n");
     printf("=====================================================\n");
 
     RUN_TEST(test_7bag_distribution);

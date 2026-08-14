@@ -77,7 +77,7 @@ static void render_game(const TetrisEngine *engine) {
     printf("\033[H");
 
     printf("\033[1;37m┌──────────────────────────────────────────────┐\033[0m\n");
-    printf("\033[1;37m│      VOID_STACK // TETRIS CORE (C99)         │\033[0m\n");
+    printf("\033[1;37m│      NAGA-TTRIS // VOID_STACK CORE (C99)     │\033[0m\n");
     printf("\033[1;37m├──────────────┬────────────────┬──────────────┤\033[0m\n");
     printf("│ \033[90m[HOLD_MEM]\033[0m   │ \033[97mSCORE: %06u\033[0m  │ \033[90m[NEXT_MEM]\033[0m   │\n", engine->score);
     printf("│ \033[90mREADY: %s\033[0m   │ \033[97mLINES: %03u\033[0m     │ \033[97mQUEUE_03\033[0m     │\n", engine->can_hold ? "YES" : "NO ", engine->lines);

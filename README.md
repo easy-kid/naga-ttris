@@ -1,6 +1,6 @@
-# SB-TETRIS // VOID_STACK
+# NAGA-TTRIS // VOID_STACK
 
-> **VOID_STACK** es una implementación de Tetris de alto rendimiento con estética **Digital Brutalista / Cyberpunk**, bordes estrictamente cuadrados, arquitectura modular adaptativa para pantallas verticales (móviles, tablets y monitores verticales), y un **motor dual**: Frontend React (TypeScript) + Motor Nativo en **C (C99)** con juego CLI ANSI y suite de pruebas unitarias automatizadas.
+> **NAGA-TTRIS (VOID_STACK)** es una implementación de Tetris de alto rendimiento con estética **Digital Brutalista / Cyberpunk**, bordes estrictamente cuadrados, arquitectura modular adaptativa para pantallas verticales (móviles, tablets y monitores verticales), y un **motor dual**: Frontend React (TypeScript) + Motor Nativo en **C (C99)** con juego CLI ANSI y suite de pruebas unitarias automatizadas.
 
 ---
 
@@ -32,7 +32,7 @@
 ## 🏗️ Estructura del Proyecto
 
 ```
-SB-TETRIS/
+naga-ttris/
 ├── src/
 │   ├── audio/
 │   │   └── synthAudio.ts        # Motor de audio con Web Audio API
