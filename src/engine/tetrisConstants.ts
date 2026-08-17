@@ -188,30 +188,39 @@ export const TETROMINO_SHAPES: Record<TetrominoType, number[][][]> = {
   ],
 };
 
-// SRS Wall Kick Offsets: [dx, dy] where dy is negative for UP in grid space (y decreases going up)
+// SRS Wall Kick Offsets: [dx, dy] where +dy is UP in Cartesian space (subtracted from grid y)
 // Standard Wall Kick Table for J, L, S, T, Z pieces:
 export const SRS_KICK_TABLE_JLSTZ: Record<string, [number, number][]> = {
-  '0->1': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
-  '1->0': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
-  '1->2': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
-  '2->1': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
-  '2->3': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
-  '3->2': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
-  '3->0': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
-  '0->3': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+  '0->1': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+  '1->0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+  '1->2': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+  '2->1': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+  '2->3': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+  '3->2': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+  '3->0': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+  '0->3': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
 };
 
 // SRS Wall Kick Table for I piece:
 export const SRS_KICK_TABLE_I: Record<string, [number, number][]> = {
-  '0->1': [[0, 0], [-2, 0], [1, 0], [-2, 1], [1, -2]],
-  '1->0': [[0, 0], [2, 0], [-1, 0], [2, -1], [-1, 2]],
-  '1->2': [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
-  '2->1': [[0, 0], [1, 0], [-2, 0], [1, 2], [-2, -1]],
-  '2->3': [[0, 0], [2, 0], [-1, 0], [2, -1], [-1, 2]],
-  '3->2': [[0, 0], [-2, 0], [1, 0], [-2, 1], [1, -2]],
-  '3->0': [[0, 0], [1, 0], [-2, 0], [1, 2], [-2, -1]],
-  '0->3': [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
+  '0->1': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+  '1->0': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+  '1->2': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+  '2->1': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+  '2->3': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+  '3->2': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+  '3->0': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+  '0->3': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
 };
+
+// SRS 180-Degree Wall Kick Table (Guideline+ / TETR.IO standard):
+export const SRS_KICK_TABLE_180: Record<string, [number, number][]> = {
+  '0->2': [[0, 0], [0, 1], [1, 1], [-1, 1], [1, 0], [-1, 0]],
+  '1->3': [[0, 0], [1, 0], [1, 2], [1, 1], [0, 2], [0, 1]],
+  '2->0': [[0, 0], [0, -1], [-1, -1], [1, -1], [-1, 0], [1, 0]],
+  '3->1': [[0, 0], [-1, 0], [-1, 2], [-1, 1], [0, 2], [0, 1]],
+};
+
 
 // Gravity speed curve by level (fall interval in milliseconds)
 export const LEVEL_SPEEDS: number[] = [
@@ -250,4 +259,17 @@ export const SCORE_TSPIN_SINGLE = 800;
 export const SCORE_TSPIN_DOUBLE = 1200;
 export const SCORE_TSPIN_TRIPLE = 1600;
 
+export const SCORE_PERFECT_CLEAR_SINGLE = 800;
+export const SCORE_PERFECT_CLEAR_DOUBLE = 1200;
+export const SCORE_PERFECT_CLEAR_TRIPLE = 1800;
+export const SCORE_PERFECT_CLEAR_TETRIS = 2000;
+export const SCORE_PERFECT_CLEAR_B2B_TETRIS = 3200;
+
 export const BACK_TO_BACK_MULTIPLIER = 1.5;
+
+export const SPRINT_TARGET_LINES = 40;
+export const BLITZ_DURATION_SECONDS = 120;
+
+export const DEFAULT_DAS_MS = 135;
+export const DEFAULT_ARR_MS = 33;
+

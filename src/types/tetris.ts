@@ -20,6 +20,30 @@ export type CellValue = TetrominoType | 'ghost' | null;
 
 export type BoardMatrix = CellValue[][];
 
+export type GameMode = 'MARATHON' | 'SPRINT' | 'BLITZ' | 'ZEN';
+
+export interface HandlingSettings {
+  dasMs: number; // Delayed Auto Shift (default 135ms)
+  arrMs: number; // Auto Repeat Rate (default 33ms)
+  softDropInstant: boolean; // Sonic drop toggle
+  vibrateEnabled: boolean;
+  swipeEnabled: boolean;
+}
+
+export interface CareerStats {
+  gamesPlayed: number;
+  totalLines: number;
+  totalScore: number;
+  totalTetrises: number;
+  totalTSpins: number;
+  totalPerfectClears: number;
+  totalPiecesPlaced: number;
+  maxComboEver: number;
+  bestSprintMs: number;
+  bestBlitzScore: number;
+  marathonHighScore: number;
+}
+
 export interface GameStats {
   score: number;
   highScore: number;
@@ -34,14 +58,32 @@ export interface GameStats {
   triples: number;
   tetrises: number;
   tSpins: number;
+  perfectClears: number;
   piecesPlaced: number;
   startTime: number;
   elapsedSeconds: number;
+  mode: GameMode;
+  sprintTimeMs?: number;
+  bestSprintMs?: number;
+  blitzTimeLeftMs?: number;
+  bestBlitzScore?: number;
+  pps: number; // Pieces Per Second
 }
 
-export type GameStatus = 'IDLE' | 'PLAYING' | 'PAUSED' | 'GAMEOVER';
+export type GameStatus = 'MENU' | 'IDLE' | 'PLAYING' | 'PAUSED' | 'GAMEOVER' | 'VICTORY';
 
-export type ClearType = 'SINGLE' | 'DOUBLE' | 'TRIPLE' | 'TETRIS' | 'TSPIN_MINI' | 'TSPIN_SINGLE' | 'TSPIN_DOUBLE' | 'TSPIN_TRIPLE' | 'PERFECT_CLEAR' | null;
+
+export type ClearType =
+  | 'SINGLE'
+  | 'DOUBLE'
+  | 'TRIPLE'
+  | 'TETRIS'
+  | 'TSPIN_MINI'
+  | 'TSPIN_SINGLE'
+  | 'TSPIN_DOUBLE'
+  | 'TSPIN_TRIPLE'
+  | 'PERFECT_CLEAR'
+  | null;
 
 export interface LastClearEvent {
   type: ClearType;
@@ -49,5 +91,7 @@ export interface LastClearEvent {
   points: number;
   combo: number;
   b2b: boolean;
+  isPerfectClear?: boolean;
   timestamp: number;
 }
+

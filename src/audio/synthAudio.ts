@@ -246,6 +246,94 @@ class SynthAudioEngine {
     });
   }
 
+  public playCombo(combo: number): void {
+    if (this.isMuted || combo <= 0) return;
+    const ctx = this.initCtx();
+    if (!ctx || !this.masterGain) return;
+
+    // Rising semi-tones: C4 * 2^(combo / 12)
+    const baseFreq = 261.63; // C4
+    const semitones = Math.min(combo, 18);
+    const freq = baseFreq * Math.pow(2, semitones / 12);
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.5, ctx.currentTime + 0.08);
+
+    gain.gain.setValueAtTime(0.22, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.085);
+  }
+
+  public playPerfectClear(): void {
+    if (this.isMuted) return;
+    const ctx = this.initCtx();
+    if (!ctx || !this.masterGain) return;
+
+    // Grand Arpeggio (C5, E5, G5, B5, C6, E6, G6)
+    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5, 1318.51, 1567.98];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = ctx.currentTime + idx * 0.055;
+
+      osc.type = idx % 2 === 0 ? 'square' : 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+
+      gain.gain.setValueAtTime(0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(t);
+      osc.stop(t + 0.23);
+    });
+  }
+
+  public playVictory(): void {
+    if (this.isMuted) return;
+    const ctx = this.initCtx();
+    if (!ctx || !this.masterGain) return;
+
+    // Victory fanfare (Tetris finish theme motif)
+    const melody = [
+      { f: 523.25, d: 0.12 },
+      { f: 659.25, d: 0.12 },
+      { f: 783.99, d: 0.12 },
+      { f: 1046.5, d: 0.25 },
+      { f: 880.0, d: 0.12 },
+      { f: 1046.5, d: 0.35 },
+    ];
+
+    let currentT = ctx.currentTime;
+    melody.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(note.f, currentT);
+
+      gain.gain.setValueAtTime(0.25, currentT);
+      gain.gain.exponentialRampToValueAtTime(0.001, currentT + note.d);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(currentT);
+      osc.stop(currentT + note.d + 0.01);
+      currentT += note.d + 0.03;
+    });
+  }
+
   public playGameOver(): void {
     if (this.isMuted) return;
     const ctx = this.initCtx();

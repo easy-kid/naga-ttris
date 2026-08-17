@@ -47,15 +47,17 @@ export const HoldPanel: React.FC<HoldPanelProps> = ({ heldPiece, canHold, onHold
     <div
       onClick={canHold ? onHoldClick : undefined}
       className={`relative border-2 border-white bg-black p-2 flex flex-col items-center justify-center transition-all ${
-        canHold ? 'cursor-pointer hover:bg-neutral-950 active:border-neutral-400' : 'opacity-70 cursor-not-allowed'
+        canHold
+          ? 'cursor-pointer hover:bg-neutral-950 active:scale-[0.98]'
+          : 'opacity-40 cursor-not-allowed border-neutral-700'
       }`}
-      style={{ width: '80px', height: '80px' }}
+      style={{ width: '68px', height: '68px' }}
       title={canHold ? 'Hold piece (Click or press C / Shift)' : 'Locked until piece placed'}
     >
       <span className="metadata absolute -top-2.5 left-2 bg-black px-1 z-10 leading-none">
         HOLD_MEM
       </span>
-      <div className="w-full h-full flex items-center justify-center">
+      <div className={`w-full h-full flex items-center justify-center ${!canHold ? 'grayscale brightness-75' : ''}`}>
         {renderPiece()}
       </div>
       <span className="metadata absolute -bottom-2 right-2 bg-black px-1 leading-none text-[7px]">

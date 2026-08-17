@@ -57,7 +57,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }
 
   return (
-    <div className="relative h-full aspect-[10/20] max-w-full border-2 border-white bg-black grid-bg flex-shrink-0 select-none">
+    <div
+      className="relative border-2 border-white bg-black grid-bg flex-shrink-0 select-none box-border"
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        height: 'auto',
+        aspectRatio: '1 / 2',
+      }}
+    >
       {/* Corner Bracket Accents (100% Square) */}
       <div className="corner corner-tl z-20"></div>
       <div className="corner corner-tr z-20"></div>
@@ -94,23 +103,31 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       </div>
 
       {/* Banner / Clear Effect Overlay */}
-      {lastClear && Date.now() - lastClear.timestamp < 1200 && (
-        <div className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center">
-          <div className="bg-black/90 border border-white px-3 py-1.5 text-center animate-pulse">
-            <div className="text-white text-xs sm:text-sm font-black font-mono tracking-widest uppercase">
-              {lastClear.type === 'TETRIS'
+      {lastClear && Date.now() - lastClear.timestamp < 1500 && (
+        <div className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center p-2">
+          <div
+            className={`border border-white px-3 py-2 text-center shadow-lg ${
+              lastClear.isPerfectClear
+                ? 'bg-white text-black font-black anim-lock scale-105'
+                : 'bg-black/95 text-white'
+            }`}
+          >
+            <div className="text-xs sm:text-sm font-black font-mono tracking-widest uppercase">
+              {lastClear.isPerfectClear
+                ? '★ ALL_CLEAR // PERFECT ★'
+                : lastClear.type === 'TETRIS'
                 ? '[ TETRIS // QUAD PURGE ]'
                 : lastClear.type?.includes('TSPIN')
                 ? `[ ${lastClear.type} ]`
                 : `[ +${lastClear.points} PTS ]`}
             </div>
-            {lastClear.b2b && (
-              <div className="text-[9px] font-mono font-bold text-neutral-300 tracking-wider mt-0.5">
+            {lastClear.b2b && !lastClear.isPerfectClear && (
+              <div className="text-[9px] font-mono font-bold tracking-wider mt-0.5 opacity-90">
                 // BACK-TO-BACK BONUS
               </div>
             )}
-            {lastClear.combo > 1 && (
-              <div className="text-[9px] font-mono font-bold text-white tracking-wider">
+            {lastClear.combo > 0 && (
+              <div className="text-[9px] font-mono font-bold tracking-wider">
                 COMBO x{lastClear.combo}
               </div>
             )}

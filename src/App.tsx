@@ -6,6 +6,9 @@ import {
   BoardMatrix,
   GameStats,
   GameStatus,
+  GameMode,
+  HandlingSettings,
+  CareerStats,
   LastClearEvent,
 } from './types/tetris';
 import {
@@ -16,6 +19,7 @@ import {
   TETROMINO_SHAPES,
   SRS_KICK_TABLE_JLSTZ,
   SRS_KICK_TABLE_I,
+  SRS_KICK_TABLE_180,
   getDropInterval,
   SCORE_SINGLE,
   SCORE_DOUBLE,
@@ -25,7 +29,14 @@ import {
   SCORE_TSPIN_SINGLE,
   SCORE_TSPIN_DOUBLE,
   SCORE_TSPIN_TRIPLE,
+  SCORE_PERFECT_CLEAR_SINGLE,
+  SCORE_PERFECT_CLEAR_DOUBLE,
+  SCORE_PERFECT_CLEAR_TRIPLE,
+  SCORE_PERFECT_CLEAR_TETRIS,
+  SCORE_PERFECT_CLEAR_B2B_TETRIS,
   BACK_TO_BACK_MULTIPLIER,
+  DEFAULT_DAS_MS,
+  DEFAULT_ARR_MS,
 } from './engine/tetrisConstants';
 import { BagRandomizer } from './engine/bagRandomizer';
 import { synthAudio } from './audio/synthAudio';
@@ -36,45 +47,108 @@ import { GameBoard } from './components/GameBoard';
 import { TouchControls } from './components/TouchControls';
 import { GameOverModal } from './components/GameOverModal';
 import { PauseModal } from './components/PauseModal';
+import { SettingsModal } from './components/SettingsModal';
+import { StatsModal } from './components/StatsModal';
+import { MainMenu } from './components/MainMenu';
 
 const createEmptyBoard = (): BoardMatrix =>
   Array.from({ length: BOARD_ROWS }, () => Array(BOARD_COLS).fill(null));
 
+const DEFAULT_CAREER_STATS: CareerStats = {
+  gamesPlayed: 0,
+  totalLines: 0,
+  totalScore: 0,
+  totalTetrises: 0,
+  totalTSpins: 0,
+  totalPerfectClears: 0,
+  totalPiecesPlaced: 0,
+  maxComboEver: 0,
+  bestSprintMs: 0,
+  bestBlitzScore: 0,
+  marathonHighScore: 0,
+};
+
 export default function App() {
-  // Game State
+  // Navigation & Status
+  const [gameStatus, setGameStatus] = useState<GameStatus>('MENU');
+
+  // Game Mode
+  const [gameMode, setGameMode] = useState<GameMode>(() => {
+    try {
+      const saved = localStorage.getItem('naga_tetris_mode');
+      if (saved === 'MARATHON' || saved === 'SPRINT' || saved === 'BLITZ' || saved === 'ZEN') {
+        return saved;
+      }
+    } catch {}
+    return 'MARATHON';
+  });
+
+  // Handling Settings (DAS / ARR)
+  const [settings, setSettings] = useState<HandlingSettings>(() => {
+    try {
+      const saved = localStorage.getItem('naga_tetris_settings');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      dasMs: DEFAULT_DAS_MS,
+      arrMs: DEFAULT_ARR_MS,
+      softDropInstant: false,
+      vibrateEnabled: true,
+      swipeEnabled: true,
+    };
+  });
+
+  // Career Statistics Database
+  const [careerStats, setCareerStats] = useState<CareerStats>(() => {
+    try {
+      const saved = localStorage.getItem('naga_career_stats');
+      if (saved) return { ...DEFAULT_CAREER_STATS, ...JSON.parse(saved) };
+    } catch {}
+    return DEFAULT_CAREER_STATS;
+  });
+
+  // Modal Visibility
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isStatsOpen, setIsStatsOpen] = useState<boolean>(false);
+
+  // Core Game State
   const [board, setBoard] = useState<BoardMatrix>(createEmptyBoard());
   const [currentPiece, setCurrentPiece] = useState<ActivePiece | null>(null);
   const [heldPiece, setHeldPiece] = useState<TetrominoType | null>(null);
   const [canHold, setCanHold] = useState<boolean>(true);
   const [nextQueue, setNextQueue] = useState<TetrominoType[]>([]);
-  const [gameStatus, setGameStatus] = useState<GameStatus>('PLAYING');
   const [isMuted, setIsMuted] = useState<boolean>(synthAudio.getMuted());
 
-  // Statistics
-  const [stats, setStats] = useState<GameStats>(() => {
-    let savedHighScore = 0;
-    try {
-      savedHighScore = parseInt(localStorage.getItem('sb_tetris_highscore') || '0', 10) || 0;
-    } catch {}
-    return {
-      score: 0,
-      highScore: savedHighScore,
-      lines: 0,
-      level: 0,
-      combo: -1,
-      maxCombo: 0,
-      backToBack: false,
-      b2bCount: 0,
-      singles: 0,
-      doubles: 0,
-      triples: 0,
-      tetrises: 0,
-      tSpins: 0,
-      piecesPlaced: 0,
-      startTime: Date.now(),
-      elapsedSeconds: 0,
-    };
-  });
+  // Mode Specific Timers
+  const [sprintElapsedMs, setSprintElapsedMs] = useState<number>(0);
+  const [blitzRemainingMs, setBlitzRemainingMs] = useState<number>(120000);
+  const [isNewBestSprint, setIsNewBestSprint] = useState<boolean>(false);
+  const [isNewHighScore, setIsNewHighScore] = useState<boolean>(false);
+
+  // Current Session Statistics
+  const [stats, setStats] = useState<GameStats>(() => ({
+    score: 0,
+    highScore: careerStats.marathonHighScore,
+    lines: 0,
+    level: 0,
+    combo: -1,
+    maxCombo: 0,
+    backToBack: false,
+    b2bCount: 0,
+    singles: 0,
+    doubles: 0,
+    triples: 0,
+    tetrises: 0,
+    tSpins: 0,
+    perfectClears: 0,
+    piecesPlaced: 0,
+    startTime: Date.now(),
+    elapsedSeconds: 0,
+    mode: gameMode,
+    bestSprintMs: careerStats.bestSprintMs,
+    bestBlitzScore: careerStats.bestBlitzScore,
+    pps: 0,
+  }));
 
   // Visual Effects State
   const [clearingLines, setClearingLines] = useState<number[]>([]);
@@ -83,7 +157,6 @@ export default function App() {
   const [shake, setShake] = useState<boolean>(false);
   const [hudFlash, setHudFlash] = useState<boolean>(false);
   const [lastClear, setLastClear] = useState<LastClearEvent | null>(null);
-  const [isNewHighScore, setIsNewHighScore] = useState<boolean>(false);
 
   // Engine Refs
   const bagRef = useRef<BagRandomizer>(new BagRandomizer());
@@ -92,9 +165,14 @@ export default function App() {
   const dropCounterRef = useRef<number>(0);
   const lockTimerRef = useRef<number>(0);
   const lockMovesRef = useRef<number>(0);
+  const lowestYRef = useRef<number>(0);
   const isLockingRef = useRef<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
   const lastMoveWasRotateRef = useRef<boolean>(false);
+  const lastKickIndexRef = useRef<number>(-1);
+
+  // Touch gesture tracker
+  const touchStartPos = useRef<{ x: number; y: number; time: number } | null>(null);
 
   // Synchronized stateRef to avoid stale closures in requestAnimationFrame loop
   const stateRef = useRef({
@@ -105,7 +183,9 @@ export default function App() {
     nextQueue,
     gameStatus,
     stats,
+    gameMode,
     clearingLines,
+    careerStats,
   });
 
   useEffect(() => {
@@ -117,9 +197,60 @@ export default function App() {
       nextQueue,
       gameStatus,
       stats,
+      gameMode,
       clearingLines,
+      careerStats,
     };
-  }, [board, currentPiece, heldPiece, canHold, nextQueue, gameStatus, stats, clearingLines]);
+  }, [
+    board,
+    currentPiece,
+    heldPiece,
+    canHold,
+    nextQueue,
+    gameStatus,
+    stats,
+    gameMode,
+    clearingLines,
+    careerStats,
+  ]);
+
+  // Persist Career Stats Helper
+  const recordCareerProgress = useCallback((finalSessionStats: GameStats) => {
+    setCareerStats((prev) => {
+      const updated: CareerStats = {
+        gamesPlayed: prev.gamesPlayed + 1,
+        totalLines: prev.totalLines + finalSessionStats.lines,
+        totalScore: prev.totalScore + finalSessionStats.score,
+        totalTetrises: prev.totalTetrises + finalSessionStats.tetrises,
+        totalTSpins: prev.totalTSpins + finalSessionStats.tSpins,
+        totalPerfectClears: prev.totalPerfectClears + finalSessionStats.perfectClears,
+        totalPiecesPlaced: prev.totalPiecesPlaced + finalSessionStats.piecesPlaced,
+        maxComboEver: Math.max(prev.maxComboEver, finalSessionStats.maxCombo),
+        marathonHighScore:
+          finalSessionStats.mode === 'MARATHON'
+            ? Math.max(prev.marathonHighScore, finalSessionStats.score)
+            : prev.marathonHighScore,
+        bestSprintMs:
+          finalSessionStats.mode === 'SPRINT' && finalSessionStats.sprintTimeMs
+            ? prev.bestSprintMs === 0
+              ? finalSessionStats.sprintTimeMs
+              : Math.min(prev.bestSprintMs, finalSessionStats.sprintTimeMs)
+            : prev.bestSprintMs,
+        bestBlitzScore:
+          finalSessionStats.mode === 'BLITZ'
+            ? Math.max(prev.bestBlitzScore, finalSessionStats.score)
+            : prev.bestBlitzScore,
+      };
+
+      try {
+        localStorage.setItem('naga_career_stats', JSON.stringify(updated));
+        if (updated.marathonHighScore > 0) {
+          localStorage.setItem('sb_tetris_highscore', String(updated.marathonHighScore));
+        }
+      } catch {}
+      return updated;
+    });
+  }, []);
 
   // Screen Shake Feedback
   const triggerShake = useCallback(() => {
@@ -167,7 +298,7 @@ export default function App() {
   const spawnPiece = useCallback(
     (typeToSpawn?: TetrominoType, boardToCheck?: BoardMatrix): boolean => {
       const type = typeToSpawn || bagRef.current.next();
-      setNextQueue(bagRef.current.peek(3));
+      setNextQueue(bagRef.current.peek(5));
 
       const rotation: RotationState = 0;
       const matrix = TETROMINO_SHAPES[type][rotation];
@@ -176,10 +307,19 @@ export default function App() {
       const targetBoard = boardToCheck || stateRef.current.board;
 
       if (checkCollision(x, y, matrix, targetBoard)) {
-        // Spawn collision -> Game Over
-        setGameStatus('GAMEOVER');
-        synthAudio.playGameOver();
-        return false;
+        if (stateRef.current.gameMode === 'ZEN') {
+          // Zen mode sandbox: clear half board to allow continuous practice
+          const sanitized = targetBoard.map((row, rIdx) =>
+            rIdx >= 10 ? Array(BOARD_COLS).fill(null) : row
+          );
+          setBoard(sanitized);
+        } else {
+          // Spawn collision -> Game Over
+          setGameStatus('GAMEOVER');
+          synthAudio.playGameOver();
+          recordCareerProgress(stateRef.current.stats);
+          return false;
+        }
       }
 
       const newPiece: ActivePiece = { type, rotation, x, y, matrix };
@@ -187,11 +327,13 @@ export default function App() {
       setCanHold(true);
       lockTimerRef.current = 0;
       lockMovesRef.current = 0;
+      lowestYRef.current = y;
       isLockingRef.current = false;
       lastMoveWasRotateRef.current = false;
+      lastKickIndexRef.current = -1;
       return true;
     },
-    [checkCollision]
+    [checkCollision, recordCareerProgress]
   );
 
   // Merge Locked Piece into Grid
@@ -214,42 +356,88 @@ export default function App() {
     []
   );
 
-  // Check for T-Spin (3-Corner Rule)
+  // Meticulous T-Spin Classifier (3-Corner Rule + Front/Back Corner + 5th Kick Override)
   const detectTSpin = useCallback(
     (piece: ActivePiece, currentBoard: BoardMatrix): { isTSpin: boolean; isMini: boolean } => {
       if (piece.type !== 'T' || !lastMoveWasRotateRef.current) {
         return { isTSpin: false, isMini: false };
       }
 
-      // Check 4 diagonals around center of 3x3 T
-      const corners = [
-        [piece.x, piece.y],         // Top-Left
-        [piece.x + 2, piece.y],     // Top-Right
-        [piece.x, piece.y + 2],     // Bottom-Left
-        [piece.x + 2, piece.y + 2], // Bottom-Right
-      ];
+      // Center of 3x3 T piece
+      const cx = piece.x + 1;
+      const cy = piece.y + 1;
 
-      let occupiedCorners = 0;
-      corners.forEach(([cx, cy]) => {
-        if (
-          cx < 0 ||
-          cx >= BOARD_COLS ||
-          cy >= BOARD_ROWS ||
-          (cy >= 0 && currentBoard[cy][cx] !== null)
-        ) {
-          occupiedCorners++;
+      // 4 diagonal corners around center: [TL, TR, BL, BR]
+      const cornerCoords = {
+        TL: [cx - 1, cy - 1],
+        TR: [cx + 1, cy - 1],
+        BL: [cx - 1, cy + 1],
+        BR: [cx + 1, cy + 1],
+      };
+
+      const isCornerOccupied = ([x, y]: number[]) => {
+        if (x < 0 || x >= BOARD_COLS || y >= BOARD_ROWS || (y >= 0 && currentBoard[y][x] !== null)) {
+          return true;
         }
-      });
+        return false;
+      };
 
-      if (occupiedCorners >= 3) {
+      const occupied = {
+        TL: isCornerOccupied(cornerCoords.TL),
+        TR: isCornerOccupied(cornerCoords.TR),
+        BL: isCornerOccupied(cornerCoords.BL),
+        BR: isCornerOccupied(cornerCoords.BR),
+      };
+
+      const totalOccupied =
+        (occupied.TL ? 1 : 0) +
+        (occupied.TR ? 1 : 0) +
+        (occupied.BL ? 1 : 0) +
+        (occupied.BR ? 1 : 0);
+
+      if (totalOccupied < 3) {
+        return { isTSpin: false, isMini: false };
+      }
+
+      // Determine Front vs Back Corners based on T orientation
+      let frontCorners = 0;
+      switch (piece.rotation) {
+        case 0: // Pointing UP (TL & TR are front)
+          if (occupied.TL) frontCorners++;
+          if (occupied.TR) frontCorners++;
+          break;
+        case 1: // Pointing RIGHT (TR & BR are front)
+          if (occupied.TR) frontCorners++;
+          if (occupied.BR) frontCorners++;
+          break;
+        case 2: // Pointing DOWN (BL & BR are front)
+          if (occupied.BL) frontCorners++;
+          if (occupied.BR) frontCorners++;
+          break;
+        case 3: // Pointing LEFT (TL & BL are front)
+          if (occupied.TL) frontCorners++;
+          if (occupied.BL) frontCorners++;
+          break;
+      }
+
+      // If both front corners are occupied -> Regular T-Spin
+      if (frontCorners === 2) {
         return { isTSpin: true, isMini: false };
       }
-      return { isTSpin: false, isMini: false };
+
+      // If only 1 front corner is occupied:
+      // If the 5th kick (index 4) was used -> Regular T-Spin (TST kick override)
+      if (lastKickIndexRef.current === 4) {
+        return { isTSpin: true, isMini: false };
+      }
+
+      // Otherwise -> T-Spin Mini
+      return { isTSpin: false, isMini: true };
     },
     []
   );
 
-  // Line Clear and Scoring Routine
+  // Line Clear, Perfect Clear & Scoring Routine
   const clearLinesRoutine = useCallback(
     async (currentBoard: BoardMatrix, pieceLocked: ActivePiece) => {
       const fullRowIndices: number[] = [];
@@ -269,12 +457,22 @@ export default function App() {
         const isTetris = lineCount === 4;
         synthAudio.playLineClear(lineCount, isTetris, isTSpin);
 
+        // Pre-compute board without cleared rows to check for Perfect Clear (All Clear)
+        const candidateBoard = currentBoard.filter((_, idx) => !fullRowIndices.includes(idx));
+        const isPerfectClear = candidateBoard.every((row) =>
+          row.every((cell) => cell === null || cell === 'ghost')
+        );
+
+        if (isPerfectClear) {
+          synthAudio.playPerfectClear();
+        }
+
         // Calculate Points & Bonuses
         setStats((prev) => {
           const currentLevel = prev.level;
           let basePoints = 0;
           let clearType: LastClearEvent['type'] = null;
-          let isB2B = prev.backToBack;
+          const isB2B = prev.backToBack;
 
           if (isTSpin) {
             if (lineCount === 1) {
@@ -306,6 +504,18 @@ export default function App() {
             }
           }
 
+          // Perfect Clear Bonus
+          let pcBonus = 0;
+          if (isPerfectClear) {
+            if (lineCount === 1) pcBonus = SCORE_PERFECT_CLEAR_SINGLE * (currentLevel + 1);
+            else if (lineCount === 2) pcBonus = SCORE_PERFECT_CLEAR_DOUBLE * (currentLevel + 1);
+            else if (lineCount === 3) pcBonus = SCORE_PERFECT_CLEAR_TRIPLE * (currentLevel + 1);
+            else if (lineCount === 4)
+              pcBonus =
+                (isB2B ? SCORE_PERFECT_CLEAR_B2B_TETRIS : SCORE_PERFECT_CLEAR_TETRIS) *
+                (currentLevel + 1);
+          }
+
           const hardClear = isTetris || isTSpin;
           let b2bMultiplier = 1;
           if (hardClear && isB2B) {
@@ -313,8 +523,12 @@ export default function App() {
           }
 
           const newCombo = prev.combo + 1;
+          if (newCombo > 0) {
+            synthAudio.playCombo(newCombo);
+          }
+
           const comboBonus = newCombo > 0 ? 50 * newCombo * (currentLevel + 1) : 0;
-          const totalPoints = Math.floor(basePoints * b2bMultiplier) + comboBonus;
+          const totalPoints = Math.floor(basePoints * b2bMultiplier) + comboBonus + pcBonus;
 
           const newScore = prev.score + totalPoints;
           const newLines = prev.lines + lineCount;
@@ -327,21 +541,20 @@ export default function App() {
           const updatedHighScore = Math.max(prev.highScore, newScore);
           if (newScore > prev.highScore) {
             setIsNewHighScore(true);
-            try {
-              localStorage.setItem('sb_tetris_highscore', String(newScore));
-            } catch {}
           }
 
-          setLastClear({
-            type: clearType,
-            lines: lineCount,
-            points: totalPoints,
-            combo: newCombo,
-            b2b: hardClear && isB2B,
-            timestamp: Date.now(),
-          });
+          // 40-Line Sprint Completion Check
+          if (prev.mode === 'SPRINT' && newLines >= 40) {
+            const sprintTime = Date.now() - prev.startTime;
+            setGameStatus('VICTORY');
+            synthAudio.playVictory();
 
-          return {
+            if (!prev.bestSprintMs || sprintTime < prev.bestSprintMs) {
+              setIsNewBestSprint(true);
+            }
+          }
+
+          const updatedStats: GameStats = {
             ...prev,
             score: newScore,
             highScore: updatedHighScore,
@@ -356,12 +569,30 @@ export default function App() {
             triples: lineCount === 3 ? prev.triples + 1 : prev.triples,
             tetrises: lineCount === 4 ? prev.tetrises + 1 : prev.tetrises,
             tSpins: isTSpin ? prev.tSpins + 1 : prev.tSpins,
+            perfectClears: isPerfectClear ? prev.perfectClears + 1 : prev.perfectClears,
             piecesPlaced: prev.piecesPlaced + 1,
+            sprintTimeMs: prev.mode === 'SPRINT' ? Date.now() - prev.startTime : undefined,
           };
+
+          if (prev.mode === 'SPRINT' && newLines >= 40) {
+            recordCareerProgress(updatedStats);
+          }
+
+          setLastClear({
+            type: isPerfectClear ? 'PERFECT_CLEAR' : clearType,
+            lines: lineCount,
+            points: totalPoints,
+            combo: newCombo,
+            b2b: hardClear && isB2B,
+            isPerfectClear,
+            timestamp: Date.now(),
+          });
+
+          return updatedStats;
         });
 
         // Clear animation delay
-        await new Promise((resolve) => setTimeout(resolve, 220));
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
         const updatedBoard = currentBoard.filter((_, idx) => !fullRowIndices.includes(idx));
         while (updatedBoard.length < BOARD_ROWS) {
@@ -371,16 +602,36 @@ export default function App() {
         setClearingLines([]);
         return updatedBoard;
       } else {
-        // Combo reset if no lines cleared
-        setStats((prev) => ({
-          ...prev,
-          combo: -1,
-          piecesPlaced: prev.piecesPlaced + 1,
-        }));
+        // T-Spin Zero check (T-Spin with 0 lines cleared)
+        if (isTSpin) {
+          synthAudio.playLineClear(0, false, true);
+          setStats((prev) => ({
+            ...prev,
+            score: prev.score + SCORE_TSPIN_MINI * (prev.level + 1),
+            tSpins: prev.tSpins + 1,
+            combo: -1,
+            piecesPlaced: prev.piecesPlaced + 1,
+          }));
+          setLastClear({
+            type: 'TSPIN_MINI',
+            lines: 0,
+            points: SCORE_TSPIN_MINI * (stateRef.current.stats.level + 1),
+            combo: 0,
+            b2b: false,
+            timestamp: Date.now(),
+          });
+        } else {
+          // Combo reset if no lines cleared
+          setStats((prev) => ({
+            ...prev,
+            combo: -1,
+            piecesPlaced: prev.piecesPlaced + 1,
+          }));
+        }
         return currentBoard;
       }
     },
-    [detectTSpin, triggerShake]
+    [detectTSpin, triggerShake, recordCareerProgress]
   );
 
   // Lock Active Piece
@@ -398,7 +649,7 @@ export default function App() {
         })
       );
       setLockCells(coords);
-      setTimeout(() => setLockCells([]), 250);
+      setTimeout(() => setLockCells([]), 220);
 
       const merged = mergePiece(pieceToLock, stateRef.current.board);
       setBoard(merged);
@@ -406,7 +657,7 @@ export default function App() {
 
       const cleanedBoard = await clearLinesRoutine(merged, pieceToLock);
 
-      if (stateRef.current.gameStatus !== 'GAMEOVER') {
+      if (stateRef.current.gameStatus === 'PLAYING') {
         setBoard(cleanedBoard);
         spawnPiece();
       }
@@ -414,6 +665,22 @@ export default function App() {
     },
     [mergePiece, clearLinesRoutine, spawnPiece]
   );
+
+  // Extended Placement Lock Reset Helper (Guideline Move Reset)
+  const handlePlacementMoveReset = useCallback((newY: number) => {
+    if (newY > lowestYRef.current) {
+      // Piece reached a strictly lower row -> Reset lock timer AND move count!
+      lowestYRef.current = newY;
+      lockMovesRef.current = 0;
+      lockTimerRef.current = 0;
+    } else {
+      // Piece at same or higher elevation -> Reset timer up to MAX_LOCK_MOVES
+      if (lockMovesRef.current < MAX_LOCK_MOVES) {
+        lockMovesRef.current++;
+        lockTimerRef.current = 0;
+      }
+    }
+  }, []);
 
   // Move Left
   const moveLeft = useCallback(() => {
@@ -425,13 +692,11 @@ export default function App() {
       synthAudio.playMove();
       lastMoveWasRotateRef.current = false;
 
-      // Lock delay extension on valid movement
-      if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
-        lockTimerRef.current = 0;
-        lockMovesRef.current++;
+      if (isLockingRef.current) {
+        handlePlacementMoveReset(currentPiece.y);
       }
     }
-  }, [checkCollision]);
+  }, [checkCollision, handlePlacementMoveReset]);
 
   // Move Right
   const moveRight = useCallback(() => {
@@ -443,35 +708,46 @@ export default function App() {
       synthAudio.playMove();
       lastMoveWasRotateRef.current = false;
 
-      // Lock delay extension on valid movement
-      if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
-        lockTimerRef.current = 0;
-        lockMovesRef.current++;
+      if (isLockingRef.current) {
+        handlePlacementMoveReset(currentPiece.y);
       }
     }
-  }, [checkCollision]);
+  }, [checkCollision, handlePlacementMoveReset]);
 
-  // Soft Drop (Down)
+  // Soft Drop / Sonic Drop
   const softDrop = useCallback(() => {
     const { currentPiece, board, gameStatus } = stateRef.current;
     if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+
+    if (settings.softDropInstant) {
+      // Sonic Drop (instant drop to bottom without immediate lock)
+      const ghostY = calculateGhostY(currentPiece, board);
+      if (ghostY > currentPiece.y) {
+        setCurrentPiece({ ...currentPiece, y: ghostY });
+        setStats((prev) => ({ ...prev, score: prev.score + (ghostY - currentPiece.y) }));
+        isLockingRef.current = true;
+        handlePlacementMoveReset(ghostY);
+      }
+      return;
+    }
 
     if (!checkCollision(currentPiece.x, currentPiece.y + 1, currentPiece.matrix, board)) {
       setCurrentPiece({ ...currentPiece, y: currentPiece.y + 1 });
       setStats((prev) => ({ ...prev, score: prev.score + 1 }));
       lastMoveWasRotateRef.current = false;
       dropCounterRef.current = 0;
+      handlePlacementMoveReset(currentPiece.y + 1);
     } else {
       isLockingRef.current = true;
     }
-  }, [checkCollision]);
+  }, [checkCollision, calculateGhostY, settings.softDropInstant, handlePlacementMoveReset]);
 
   // Super Rotation System (SRS) - Clockwise (CW)
   const rotateCW = useCallback(() => {
     const { currentPiece, board, gameStatus } = stateRef.current;
     if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
 
-    if (currentPiece.type === 'O') return; // O piece does not rotate
+    if (currentPiece.type === 'O') return;
 
     const currentRotation = currentPiece.rotation;
     const nextRotation = ((currentRotation + 1) % 4) as RotationState;
@@ -482,9 +758,10 @@ export default function App() {
 
     if (!kickTable) return;
 
-    for (const [kx, ky] of kickTable) {
+    for (let i = 0; i < kickTable.length; i++) {
+      const [kx, ky] = kickTable[i];
       const targetX = currentPiece.x + kx;
-      const targetY = currentPiece.y - ky; // SRS kick table +y is UP in grid coords
+      const targetY = currentPiece.y - ky; // Subtract ky because +ky is UP in Cartesian
 
       if (!checkCollision(targetX, targetY, nextMatrix, board)) {
         setCurrentPiece({
@@ -498,16 +775,15 @@ export default function App() {
         setHudFlash(true);
         setTimeout(() => setHudFlash(false), 80);
         lastMoveWasRotateRef.current = true;
+        lastKickIndexRef.current = i;
 
-        // Reset lock timer on successful rotation
-        if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
-          lockTimerRef.current = 0;
-          lockMovesRef.current++;
+        if (isLockingRef.current) {
+          handlePlacementMoveReset(targetY);
         }
         return;
       }
     }
-  }, [checkCollision]);
+  }, [checkCollision, handlePlacementMoveReset]);
 
   // Super Rotation System (SRS) - Counter-Clockwise (CCW)
   const rotateCCW = useCallback(() => {
@@ -525,7 +801,8 @@ export default function App() {
 
     if (!kickTable) return;
 
-    for (const [kx, ky] of kickTable) {
+    for (let i = 0; i < kickTable.length; i++) {
+      const [kx, ky] = kickTable[i];
       const targetX = currentPiece.x + kx;
       const targetY = currentPiece.y - ky;
 
@@ -541,15 +818,52 @@ export default function App() {
         setHudFlash(true);
         setTimeout(() => setHudFlash(false), 80);
         lastMoveWasRotateRef.current = true;
+        lastKickIndexRef.current = i;
 
-        if (isLockingRef.current && lockMovesRef.current < MAX_LOCK_MOVES) {
-          lockTimerRef.current = 0;
-          lockMovesRef.current++;
+        if (isLockingRef.current) {
+          handlePlacementMoveReset(targetY);
         }
         return;
       }
     }
-  }, [checkCollision]);
+  }, [checkCollision, handlePlacementMoveReset]);
+
+  // 180-Degree Rotation with Wall Kicks
+  const rotate180 = useCallback(() => {
+    const { currentPiece, board, gameStatus } = stateRef.current;
+    if (gameStatus !== 'PLAYING' || !currentPiece || isProcessingRef.current) return;
+    if (currentPiece.type === 'O') return;
+
+    const currentRotation = currentPiece.rotation;
+    const nextRotation = ((currentRotation + 2) % 4) as RotationState;
+    const nextMatrix = TETROMINO_SHAPES[currentPiece.type][nextRotation];
+    const kickKey = `${currentRotation}->${nextRotation}`;
+    const kickTable = SRS_KICK_TABLE_180[kickKey] || [[0, 0]];
+
+    for (let i = 0; i < kickTable.length; i++) {
+      const [kx, ky] = kickTable[i];
+      const targetX = currentPiece.x + kx;
+      const targetY = currentPiece.y - ky;
+
+      if (!checkCollision(targetX, targetY, nextMatrix, board)) {
+        setCurrentPiece({
+          ...currentPiece,
+          rotation: nextRotation,
+          matrix: nextMatrix,
+          x: targetX,
+          y: targetY,
+        });
+        synthAudio.playRotate();
+        lastMoveWasRotateRef.current = true;
+        lastKickIndexRef.current = i;
+
+        if (isLockingRef.current) {
+          handlePlacementMoveReset(targetY);
+        }
+        return;
+      }
+    }
+  }, [checkCollision, handlePlacementMoveReset]);
 
   // Instant Gravity (Hard Drop)
   const hardDrop = useCallback(() => {
@@ -584,17 +898,13 @@ export default function App() {
     const pieceTypeToHold = currentPiece.type;
 
     if (heldPiece === null) {
-      setHeldPiece(pieceTypeTypeOrNull(pieceTypeToHold));
+      setHeldPiece(pieceTypeToHold);
       spawnPiece();
     } else {
-      setHeldPiece(pieceTypeTypeOrNull(pieceTypeToHold));
+      setHeldPiece(pieceTypeToHold);
       spawnPiece(heldPiece);
     }
   }, [spawnPiece]);
-
-  function pieceTypeTypeOrNull(type: TetrominoType): TetrominoType {
-    return type;
-  }
 
   // Toggle Pause
   const togglePause = useCallback(() => {
@@ -611,58 +921,136 @@ export default function App() {
     setIsMuted(muted);
   }, []);
 
-  // Reset / Restart Game
-  const resetGame = useCallback(() => {
-    const empty = createEmptyBoard();
-    bagRef.current.reset();
-    setBoard(empty);
+  // Mode Selection & Launch
+  const startModeGame = useCallback((mode: GameMode) => {
+    setGameMode(mode);
+    try {
+      localStorage.setItem('naga_tetris_mode', mode);
+    } catch {}
+    resetGame(mode);
+  }, []);
+
+  // Reset / Restart Game Round
+  const resetGame = useCallback(
+    (targetMode?: GameMode) => {
+      const activeMode = targetMode || stateRef.current.gameMode;
+      const empty = createEmptyBoard();
+      bagRef.current.reset();
+      setBoard(empty);
+      setCurrentPiece(null);
+      setHeldPiece(null);
+      setCanHold(true);
+      setNextQueue(bagRef.current.peek(5));
+      setGameStatus('PLAYING');
+      setClearingLines([]);
+      setLockCells([]);
+      setLastClear(null);
+      setIsNewHighScore(false);
+      setIsNewBestSprint(false);
+      setSprintElapsedMs(0);
+      setBlitzRemainingMs(120000);
+      isProcessingRef.current = false;
+      dropCounterRef.current = 0;
+      lockTimerRef.current = 0;
+      lockMovesRef.current = 0;
+      lowestYRef.current = 0;
+      isLockingRef.current = false;
+
+      setStats({
+        score: 0,
+        highScore: stateRef.current.careerStats.marathonHighScore,
+        lines: 0,
+        level: activeMode === 'ZEN' ? 5 : 0,
+        combo: -1,
+        maxCombo: 0,
+        backToBack: false,
+        b2bCount: 0,
+        singles: 0,
+        doubles: 0,
+        triples: 0,
+        tetrises: 0,
+        tSpins: 0,
+        perfectClears: 0,
+        piecesPlaced: 0,
+        startTime: Date.now(),
+        elapsedSeconds: 0,
+        mode: activeMode,
+        bestSprintMs: stateRef.current.careerStats.bestSprintMs,
+        bestBlitzScore: stateRef.current.careerStats.bestBlitzScore,
+        pps: 0,
+      });
+
+      spawnPiece(undefined, empty);
+    },
+    [spawnPiece]
+  );
+
+  // Return to Main Menu
+  const returnToMainMenu = useCallback(() => {
+    setGameStatus('MENU');
     setCurrentPiece(null);
-    setHeldPiece(null);
-    setCanHold(true);
-    setNextQueue(bagRef.current.peek(3));
-    setGameStatus('PLAYING');
-    setClearingLines([]);
-    setLockCells([]);
-    setLastClear(null);
-    setIsNewHighScore(false);
-    isProcessingRef.current = false;
-    dropCounterRef.current = 0;
-    lockTimerRef.current = 0;
-    lockMovesRef.current = 0;
-    isLockingRef.current = false;
+  }, []);
 
-    setStats((prev) => ({
-      score: 0,
-      highScore: prev.highScore,
-      lines: 0,
-      level: 0,
-      combo: -1,
-      maxCombo: 0,
-      backToBack: false,
-      b2bCount: 0,
-      singles: 0,
-      doubles: 0,
-      triples: 0,
-      tetrises: 0,
-      tSpins: 0,
-      piecesPlaced: 0,
-      startTime: Date.now(),
-      elapsedSeconds: 0,
-    }));
+  // Settings Update
+  const handleUpdateSettings = useCallback((newSettings: HandlingSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('naga_tetris_settings', JSON.stringify(newSettings));
+    } catch {}
+  }, []);
 
-    spawnPiece(undefined, empty);
-  }, [spawnPiece]);
+  // Reset Career Stats
+  const handleResetCareerStats = useCallback(() => {
+    setCareerStats(DEFAULT_CAREER_STATS);
+    try {
+      localStorage.removeItem('naga_career_stats');
+      localStorage.removeItem('sb_tetris_highscore');
+      localStorage.removeItem('naga_sprint_pb');
+      localStorage.removeItem('naga_blitz_hi');
+    } catch {}
+  }, []);
 
-  // Master Keyboard Event Handler
+  // Gesture Controls on Game Board
+  const handleBoardTouchStart = (e: React.TouchEvent) => {
+    if (!settings.swipeEnabled || stateRef.current.gameStatus !== 'PLAYING') return;
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleBoardTouchEnd = (e: React.TouchEvent) => {
+    if (!settings.swipeEnabled || !touchStartPos.current || stateRef.current.gameStatus !== 'PLAYING') return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStartPos.current.x;
+    const dy = touch.clientY - touchStartPos.current.y;
+    const dt = Date.now() - touchStartPos.current.time;
+
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (dt < 250 && absX < 15 && absY < 15) {
+      // Tap -> Rotate CW
+      rotateCW();
+    } else if (absY > 60 && dy > 0 && absY > absX * 1.5 && dt < 200) {
+      // Fast Flick Down -> Hard Drop
+      hardDrop();
+    } else if (absY > 50 && dy < 0 && absY > absX * 1.5) {
+      // Swipe Up -> Hold
+      holdCurrentPiece();
+    }
+    touchStartPos.current = null;
+  };
+
+  // Keyboard Event Handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent default page scroll on game keys
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Tab'].includes(e.key)) {
         e.preventDefault();
       }
 
       if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
-        togglePause();
+        if (stateRef.current.gameStatus === 'PLAYING' || stateRef.current.gameStatus === 'PAUSED') {
+          togglePause();
+        }
         return;
       }
 
@@ -675,23 +1063,21 @@ export default function App() {
 
       switch (e.key) {
         case 'ArrowLeft':
-        case 'a':
-        case 'A':
+        case 'j':
+        case 'J':
           moveLeft();
           break;
         case 'ArrowRight':
-        case 'd':
-        case 'D':
+        case 'l':
+        case 'L':
           moveRight();
           break;
         case 'ArrowDown':
-        case 's':
-        case 'S':
+        case 'k':
+        case 'K':
           softDrop();
           break;
         case 'ArrowUp':
-        case 'w':
-        case 'W':
         case 'x':
         case 'X':
           rotateCW();
@@ -699,6 +1085,10 @@ export default function App() {
         case 'z':
         case 'Z':
           rotateCCW();
+          break;
+        case 'a':
+        case 'A':
+          rotate180();
           break;
         case ' ':
           hardDrop();
@@ -713,7 +1103,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveLeft, moveRight, softDrop, rotateCW, rotateCCW, hardDrop, holdCurrentPiece, togglePause, handleToggleMute]);
+  }, [moveLeft, moveRight, softDrop, rotateCW, rotateCCW, rotate180, hardDrop, holdCurrentPiece, togglePause, handleToggleMute]);
 
   // Main 60 FPS Game Loop
   const gameLoop = useCallback(
@@ -722,13 +1112,34 @@ export default function App() {
       const deltaTime = time - lastTimeRef.current;
       lastTimeRef.current = time;
 
-      const { gameStatus, currentPiece, board, stats } = stateRef.current;
+      const { gameStatus, currentPiece, board, stats, gameMode } = stateRef.current;
 
       if (gameStatus === 'PLAYING' && !isProcessingRef.current) {
-        // Track uptime
+        const now = Date.now();
+        const elapsedSecs = Math.floor((now - stats.startTime) / 1000);
+
+        // Sprint Stopwatch
+        if (gameMode === 'SPRINT') {
+          setSprintElapsedMs(now - stats.startTime);
+        }
+
+        // Blitz Countdown
+        if (gameMode === 'BLITZ') {
+          const remaining = 120000 - (now - stats.startTime);
+          setBlitzRemainingMs(remaining);
+
+          if (remaining <= 0) {
+            setGameStatus('VICTORY');
+            synthAudio.playVictory();
+            recordCareerProgress(stats);
+          }
+        }
+
+        // Track stats
         setStats((prev) => ({
           ...prev,
-          elapsedSeconds: Math.floor((Date.now() - prev.startTime) / 1000),
+          elapsedSeconds: elapsedSecs,
+          pps: elapsedSecs > 0 ? Number((prev.piecesPlaced / elapsedSecs).toFixed(2)) : 0,
         }));
 
         if (!currentPiece) {
@@ -753,12 +1164,17 @@ export default function App() {
             lockTimerRef.current = 0;
             dropCounterRef.current += deltaTime;
 
-            const currentInterval = getDropInterval(stats.level);
+            const currentInterval =
+              gameMode === 'ZEN' ? 400 : getDropInterval(stats.level);
+
             if (dropCounterRef.current >= currentInterval) {
               dropCounterRef.current = 0;
               if (!checkCollision(currentPiece.x, currentPiece.y + 1, currentPiece.matrix, board)) {
                 setCurrentPiece({ ...currentPiece, y: currentPiece.y + 1 });
                 lastMoveWasRotateRef.current = false;
+                if (currentPiece.y + 1 > lowestYRef.current) {
+                  lowestYRef.current = currentPiece.y + 1;
+                }
               }
             }
           }
@@ -767,97 +1183,150 @@ export default function App() {
 
       requestRef.current = requestAnimationFrame(gameLoop);
     },
-    [checkCollision, lockPiece, spawnPiece]
+    [checkCollision, lockPiece, spawnPiece, recordCareerProgress]
   );
 
-  // Mount & Initial Spawn
+  // Mount & Loop
   useEffect(() => {
-    setNextQueue(bagRef.current.peek(3));
-    spawnPiece();
     requestRef.current = requestAnimationFrame(gameLoop);
-
     return () => cancelAnimationFrame(requestRef.current);
   }, []);
 
   const ghostY =
-    currentPiece && !isProcessingRef.current
-      ? calculateGhostY(currentPiece, board)
-      : -1;
+    currentPiece && !isProcessingRef.current ? calculateGhostY(currentPiece, board) : -1;
 
   return (
     <div
       className={`w-full h-dvh bg-black text-white flex flex-col items-center justify-between font-mono relative overflow-hidden select-none touch-none ${
         shake ? 'anim-shake' : ''
       } ${hudFlash ? 'hud-flash' : ''} max-w-md mx-auto`}
+      style={{
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 4px)',
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+        paddingLeft: 'max(env(safe-area-inset-left, 0px), 4px)',
+        paddingRight: 'max(env(safe-area-inset-right, 0px), 4px)',
+      }}
     >
       <div className="scanline"></div>
 
-      {/* HEADER & SCORE TELEMETRY */}
-      <div className="w-full flex-shrink-0 px-3 pt-3 pb-1 z-20">
-        <ScoreBoard
-          stats={stats}
+      {/* RENDER VIEW: MAIN MENU vs GAME PLAYFIELD */}
+      {gameStatus === 'MENU' ? (
+        <MainMenu
+          onStartGame={startModeGame}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenStats={() => setIsStatsOpen(true)}
+          careerStats={careerStats}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
-          onPause={togglePause}
-          isPaused={gameStatus === 'PAUSED'}
         />
-      </div>
+      ) : (
+        <>
+          {/* HEADER & SCORE TELEMETRY */}
+          <div className="w-full flex-shrink-0 px-3 pt-2 pb-1 z-20">
+            <ScoreBoard
+              stats={stats}
+              isMuted={isMuted}
+              onToggleMute={handleToggleMute}
+              onPause={togglePause}
+              isPaused={gameStatus === 'PAUSED'}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              sprintElapsedTimeMs={sprintElapsedMs}
+              blitzRemainingMs={blitzRemainingMs}
+            />
+          </div>
 
-      {/* MAIN PLAYFIELD & SIDE PANELS (Vertical Ergonomic Layout) */}
-      <div className="flex-1 w-full min-h-0 flex items-center justify-center gap-2 px-2 z-10">
-        {/* Left Side: Hold Panel */}
-        <div className="flex flex-col items-center justify-start h-full pt-2">
-          <HoldPanel heldPiece={heldPiece} canHold={canHold} onHoldClick={holdCurrentPiece} />
-        </div>
+          {/* MAIN PLAYFIELD & SIDE PANELS */}
+          <div
+            className="flex-1 w-full min-h-0 flex items-center justify-center gap-1.5 px-2 z-10 py-1"
+            onTouchStart={handleBoardTouchStart}
+            onTouchEnd={handleBoardTouchEnd}
+          >
+            {/* Left Side: Hold Panel */}
+            <div className="flex flex-col items-center justify-start flex-shrink-0">
+              <HoldPanel heldPiece={heldPiece} canHold={canHold} onHoldClick={holdCurrentPiece} />
+            </div>
 
-        {/* Center: 10x20 Game Board */}
-        <div className="h-full flex items-center justify-center flex-1 min-w-0 max-w-full">
-          <GameBoard
-            board={board}
-            currentPiece={currentPiece}
-            ghostY={ghostY}
-            clearingLines={clearingLines}
-            lockCells={lockCells}
-            dropFlash={dropFlash}
-            lastClear={lastClear}
+            {/* Center: 10x20 Game Board */}
+            <div className="flex-1 h-full min-h-0 min-w-0 max-w-[270px] flex items-center justify-center">
+              <GameBoard
+                board={board}
+                currentPiece={currentPiece}
+                ghostY={ghostY}
+                clearingLines={clearingLines}
+                lockCells={lockCells}
+                dropFlash={dropFlash}
+                lastClear={lastClear}
+              />
+            </div>
+
+            {/* Right Side: Next Queue Panel (5 previews) */}
+            <div className="flex flex-col items-center justify-start flex-shrink-0">
+              <NextQueuePanel queue={nextQueue} />
+            </div>
+          </div>
+
+          {/* TACTILE TOUCH CONTROLS */}
+          <TouchControls
+            onMoveLeft={moveLeft}
+            onMoveRight={moveRight}
+            onSoftDrop={softDrop}
+            onHardDrop={hardDrop}
+            onRotateCW={rotateCW}
+            onRotateCCW={rotateCCW}
+            onRotate180={rotate180}
+            onHold={holdCurrentPiece}
+            disabled={gameStatus !== 'PLAYING'}
+            settings={settings}
           />
-        </div>
-
-        {/* Right Side: Next Queue Panel */}
-        <div className="flex flex-col items-center justify-start h-full pt-2">
-          <NextQueuePanel queue={nextQueue} />
-        </div>
-      </div>
-
-      {/* TACTILE TOUCH CONTROLS (Ergonomic for vertical screens) */}
-      <TouchControls
-        onMoveLeft={moveLeft}
-        onMoveRight={moveRight}
-        onSoftDrop={softDrop}
-        onHardDrop={hardDrop}
-        onRotateCW={rotateCW}
-        onRotateCCW={rotateCCW}
-        onHold={holdCurrentPiece}
-        disabled={gameStatus !== 'PLAYING'}
-      />
+        </>
+      )}
 
       {/* MODALS */}
       {gameStatus === 'PAUSED' && (
         <PauseModal
           onResume={togglePause}
-          onRestart={resetGame}
+          onRestart={() => resetGame()}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onReturnToMenu={returnToMainMenu}
         />
       )}
 
-      {gameStatus === 'GAMEOVER' && (
+      {(gameStatus === 'GAMEOVER' || gameStatus === 'VICTORY') && (
         <GameOverModal
           stats={stats}
+          status={gameStatus}
           isNewHighScore={isNewHighScore}
-          onRestart={resetGame}
+          isNewBestSprint={isNewBestSprint}
+          onRestart={() => resetGame()}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onReturnToMenu={returnToMainMenu}
         />
       )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentMode={gameMode}
+        onSelectMode={(mode) => {
+          setGameMode(mode);
+          if (gameStatus === 'PLAYING') {
+            resetGame(mode);
+          }
+        }}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        bestSprintMs={careerStats.bestSprintMs}
+        bestBlitzScore={careerStats.bestBlitzScore}
+      />
+
+      <StatsModal
+        isOpen={isStatsOpen}
+        onClose={() => setIsStatsOpen(false)}
+        careerStats={careerStats}
+        onResetStats={handleResetCareerStats}
+      />
     </div>
   );
 }

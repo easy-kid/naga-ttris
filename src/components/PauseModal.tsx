@@ -5,6 +5,8 @@ interface PauseModalProps {
   onRestart: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  onOpenSettings?: () => void;
+  onReturnToMenu?: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
@@ -12,6 +14,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onRestart,
   isMuted,
   onToggleMute,
+  onOpenSettings,
+  onReturnToMenu,
 }) => {
   return (
     <div className="absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4 select-none font-mono animate-fadeIn">
@@ -29,8 +33,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         <span className="metadata text-[8px] my-1">// CORE_EXECUTION_SUSPENDED //</span>
 
         {/* Control Cheat Sheet */}
-        <div className="w-full my-3 border border-white/30 bg-neutral-950 p-2 text-[9px] text-left space-y-1">
-          <div className="text-neutral-400 font-bold border-b border-white/20 pb-0.5 mb-1">
+        <div className="w-full my-2.5 border border-white/30 bg-neutral-950 p-2 text-[9px] text-left space-y-1">
+          <div className="text-neutral-400 font-bold border-b border-neutral-800 pb-0.5 mb-1">
             KEYBOARD_BINDINGS:
           </div>
           <div className="flex justify-between">
@@ -38,53 +42,55 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             <span className="text-white font-bold">◄ ► / A D</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-neutral-400">ROTATE CW:</span>
-            <span className="text-white font-bold">▲ / W / X</span>
+            <span className="text-neutral-400">ROTATE CW / CCW:</span>
+            <span className="text-white font-bold">▲ X / Z</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-neutral-400">ROTATE CCW:</span>
-            <span className="text-white font-bold">Z</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-400">SOFT DROP:</span>
-            <span className="text-white font-bold">▼ / S</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-400">HARD DROP:</span>
-            <span className="text-white font-bold">SPACE</span>
+            <span className="text-neutral-400">SOFT / HARD DROP:</span>
+            <span className="text-white font-bold">▼ / SPACE</span>
           </div>
           <div className="flex justify-between">
             <span className="text-neutral-400">HOLD PIECE:</span>
             <span className="text-white font-bold">C / SHIFT</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-400">PAUSE/MUTE:</span>
-            <span className="text-white font-bold">P, ESC / M</span>
-          </div>
         </div>
 
         {/* Buttons */}
-        <div className="w-full space-y-2">
+        <div className="w-full space-y-1.5">
           <button
             onClick={onResume}
-            className="w-full industrial-btn bg-white !text-black hover:bg-neutral-200 active:translate-y-0.5 text-xs font-black tracking-widest py-2.5 uppercase"
+            className="w-full industrial-btn !bg-white !text-black hover:bg-neutral-200 active:scale-[0.99] text-xs font-black tracking-widest py-2.5 uppercase"
           >
             [ RESUME_EXECUTION ]
           </button>
 
-          <button
-            onClick={onToggleMute}
-            className="w-full industrial-btn hover:bg-neutral-900 active:translate-y-0.5 text-xs font-bold tracking-wider py-2 uppercase"
-          >
-            AUDIO: {isMuted ? 'MUTED [OFF]' : 'ACTIVE [ON]'}
-          </button>
+          {onOpenSettings && (
+            <button
+              onClick={() => {
+                onResume();
+                onOpenSettings();
+              }}
+              className="w-full industrial-btn border border-white hover:bg-neutral-900 active:scale-[0.99] text-xs font-bold tracking-wider py-1.5 uppercase"
+            >
+              [ CONFIG & HANDLING ]
+            </button>
+          )}
 
           <button
             onClick={onRestart}
-            className="w-full industrial-btn border-red-500 text-red-500 hover:bg-red-950/30 active:translate-y-0.5 text-xs font-bold tracking-wider py-2 uppercase"
+            className="w-full industrial-btn border border-white hover:bg-neutral-900 active:scale-[0.99] text-xs font-bold tracking-wider py-1.5 uppercase text-neutral-300"
           >
-            [ ABORT // REBOOT_GAME ]
+            [ REBOOT_ROUND ]
           </button>
+
+          {onReturnToMenu && (
+            <button
+              onClick={onReturnToMenu}
+              className="w-full industrial-btn border border-neutral-700 bg-neutral-950 hover:border-white active:scale-[0.99] text-xs font-bold tracking-wider py-1.5 uppercase text-neutral-400 hover:text-white"
+            >
+              [ RETURN_TO_MAIN_MENU ]
+            </button>
+          )}
         </div>
       </div>
     </div>

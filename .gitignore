@@ -11,3 +11,13 @@ c-engine/src/*.o
 c-engine/tests/*.o
 c-engine/test_tetris
 c-engine/sb_tetris_cli
+
+# Android & Capacitor build artifacts
+android/.gradle
+android/build
+android/app/build
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+android/local.properties
+*.apk
+*.idsig

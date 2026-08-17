@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useEffect } from 'react';
+import { HandlingSettings } from '../types/tetris';
 
 interface TouchControlsProps {
   onMoveLeft: () => void;
@@ -7,36 +8,57 @@ interface TouchControlsProps {
   onHardDrop: () => void;
   onRotateCW: () => void;
   onRotateCCW: () => void;
+  onRotate180?: () => void;
   onHold: () => void;
   disabled?: boolean;
+  settings?: HandlingSettings;
 }
 
-// Custom Hook for DAS (Delayed Auto Shift) on Hold
-const useHoldAction = (action: () => void, initialDelay = 150, repeatDelay = 35, disabled = false) => {
+// Custom Hook for DAS (Delayed Auto Shift) & ARR (Auto Repeat Rate)
+const useHoldAction = (
+  action: () => void,
+  initialDelay = 135,
+  repeatDelay = 33,
+  disabled = false,
+  vibrate = true
+) => {
   const timeoutRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
 
   const trigger = useCallback(() => {
     if (disabled) return;
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try { navigator.vibrate(8); } catch {}
+    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(8);
+      } catch {}
     }
     action();
-  }, [action, disabled]);
+  }, [action, disabled, vibrate]);
 
-  const start = useCallback((e?: React.PointerEvent | React.TouchEvent) => {
-    if (e) {
-      if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
-    }
-    if (disabled) return;
-    trigger();
-    clearTimeout(timeoutRef.current);
-    clearInterval(intervalRef.current);
-    timeoutRef.current = setTimeout(() => {
-      intervalRef.current = setInterval(trigger, repeatDelay);
-    }, initialDelay);
-  }, [trigger, initialDelay, repeatDelay, disabled]);
+  const start = useCallback(
+    (e?: React.PointerEvent | React.TouchEvent) => {
+      if (e) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+      }
+      if (disabled) return;
+      trigger();
+      clearTimeout(timeoutRef.current);
+      clearInterval(intervalRef.current);
+
+      if (repeatDelay === 0) {
+        // Instant 0-ARR: Repeat immediately and rapidly
+        timeoutRef.current = setTimeout(() => {
+          for (let i = 0; i < 9; i++) action();
+        }, initialDelay);
+      } else {
+        timeoutRef.current = setTimeout(() => {
+          intervalRef.current = setInterval(trigger, Math.max(16, repeatDelay));
+        }, initialDelay);
+      }
+    },
+    [trigger, initialDelay, repeatDelay, disabled, action]
+  );
 
   const stop = useCallback((e?: React.PointerEvent | React.TouchEvent | Event) => {
     if (e) {
@@ -72,19 +94,29 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onHardDrop,
   onRotateCW,
   onRotateCCW,
+  onRotate180,
   onHold,
   disabled = false,
+  settings = {
+    dasMs: 135,
+    arrMs: 33,
+    softDropInstant: false,
+    vibrateEnabled: true,
+    swipeEnabled: true,
+  },
 }) => {
-  const leftHold = useHoldAction(onMoveLeft, 150, 38, disabled);
-  const rightHold = useHoldAction(onMoveRight, 150, 38, disabled);
-  const dropHold = useHoldAction(onSoftDrop, 0, 32, disabled);
+  const leftHold = useHoldAction(onMoveLeft, settings.dasMs, settings.arrMs, disabled, settings.vibrateEnabled);
+  const rightHold = useHoldAction(onMoveRight, settings.dasMs, settings.arrMs, disabled, settings.vibrateEnabled);
+  const dropHold = useHoldAction(onSoftDrop, 0, settings.softDropInstant ? 16 : 28, disabled, settings.vibrateEnabled);
 
   const handleTap = (action: () => void, vibrateMs = 12) => (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (disabled) return;
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try { navigator.vibrate(vibrateMs); } catch {}
+    if (settings.vibrateEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(vibrateMs);
+      } catch {}
     }
     action();
   };

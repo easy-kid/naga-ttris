@@ -7,17 +7,21 @@ interface NextQueuePanelProps {
 }
 
 export const NextQueuePanel: React.FC<NextQueuePanelProps> = ({ queue }) => {
-  const displayPieces = queue.slice(0, 3);
+  const displayPieces = queue.slice(0, 5);
 
   const renderMiniPiece = (type: TetrominoType, index: number) => {
     const matrix = TETROMINO_SHAPES[type][0];
-    const cellSize = index === 0 ? 11 : 9;
+    const cellSize = index === 0 ? 10 : 8;
 
     return (
       <div
         key={`next-${index}-${type}`}
-        className={`flex items-center justify-center ${index > 0 ? 'opacity-70 scale-90 -my-0.5' : ''}`}
-        style={{ minHeight: '32px' }}
+        className={`flex items-center justify-center ${
+          index === 0
+            ? 'opacity-100 my-0.5'
+            : 'opacity-70 scale-90 -my-0.5'
+        }`}
+        style={{ minHeight: index === 0 ? '28px' : '20px' }}
       >
         <div
           className="grid gap-0 place-content-center"
@@ -43,18 +47,19 @@ export const NextQueuePanel: React.FC<NextQueuePanelProps> = ({ queue }) => {
 
   return (
     <div
-      className="relative border-2 border-white bg-black p-2 flex flex-col items-center justify-between"
-      style={{ width: '80px', minHeight: '120px' }}
+      className="relative border-2 border-white bg-black px-1.5 py-2 flex flex-col items-center justify-between"
+      style={{ width: '68px', minHeight: '145px' }}
     >
       <span className="metadata absolute -top-2.5 left-2 bg-black px-1 z-10 leading-none">
         NEXT_MEM
       </span>
-      <div className="w-full flex-1 flex flex-col items-center justify-around py-1">
+      <div className="w-full flex-1 flex flex-col items-center justify-around py-0.5">
         {displayPieces.map((type, idx) => renderMiniPiece(type, idx))}
       </div>
       <span className="metadata absolute -bottom-2 right-2 bg-black px-1 leading-none text-[7px]">
-        QUEUE_03
+        QUEUE_05
       </span>
     </div>
   );
 };
+
