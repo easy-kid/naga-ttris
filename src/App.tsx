@@ -1237,7 +1237,7 @@ export default function App() {
 
           {/* MAIN PLAYFIELD & SIDE PANELS */}
           <div
-            className="flex-1 w-full min-h-0 flex items-center justify-center gap-2 px-2 z-10 py-1"
+            className="flex-1 w-full min-h-0 flex items-center justify-center gap-1.5 px-1 z-10 py-1"
             onTouchStart={handleBoardTouchStart}
             onTouchEnd={handleBoardTouchEnd}
           >
@@ -1251,8 +1251,8 @@ export default function App() {
               />
             </div>
 
-            {/* Center: 10x20 Game Board */}
-            <div className="flex-1 h-full min-h-0 min-w-0 max-w-[260px] flex items-center justify-center">
+            {/* Center: 10x20 Game Board (Dominant enlarged matrix) */}
+            <div className="h-full min-h-0 flex-1 max-w-[245px] flex items-center justify-center">
               <GameBoard
                 board={board}
                 currentPiece={currentPiece}

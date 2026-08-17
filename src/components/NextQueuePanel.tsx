@@ -11,7 +11,7 @@ export const NextQueuePanel: React.FC<NextQueuePanelProps> = ({ queue }) => {
 
   const renderMiniPiece = (type: TetrominoType, index: number) => {
     const matrix = TETROMINO_SHAPES[type][0];
-    const cellSize = index === 0 ? 10 : 8;
+    const cellSize = index === 0 ? 8.5 : 7;
 
     return (
       <div
@@ -21,7 +21,7 @@ export const NextQueuePanel: React.FC<NextQueuePanelProps> = ({ queue }) => {
             ? 'opacity-100 my-0.5'
             : 'opacity-70 scale-90 -my-0.5'
         }`}
-        style={{ minHeight: index === 0 ? '28px' : '20px' }}
+        style={{ minHeight: index === 0 ? '24px' : '18px' }}
       >
         <div
           className="grid gap-0 place-content-center"
@@ -47,19 +47,18 @@ export const NextQueuePanel: React.FC<NextQueuePanelProps> = ({ queue }) => {
 
   return (
     <div
-      className="relative border-2 border-white bg-black px-1.5 py-2 flex flex-col items-center justify-between"
-      style={{ width: '68px', minHeight: '145px' }}
+      className="relative border-2 border-white bg-black px-1 py-1 flex flex-col items-center justify-between"
+      style={{ width: '52px', minHeight: '140px' }}
     >
-      <span className="metadata absolute -top-2.5 left-2 bg-black px-1 z-10 leading-none">
+      <span className="metadata absolute -top-2 left-1 bg-black px-0.5 z-10 leading-none text-[6.5px]">
         NEXT_MEM
       </span>
       <div className="w-full flex-1 flex flex-col items-center justify-around py-0.5">
         {displayPieces.map((type, idx) => renderMiniPiece(type, idx))}
       </div>
-      <span className="metadata absolute -bottom-2 right-2 bg-black px-1 leading-none text-[7px]">
+      <span className="metadata absolute -bottom-1.5 right-1 bg-black px-0.5 leading-none text-[5.5px]">
         QUEUE_05
       </span>
     </div>
   );
 };
-

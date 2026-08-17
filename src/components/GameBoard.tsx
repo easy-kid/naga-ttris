@@ -58,10 +58,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   return (
     <div
-      className="relative border-2 border-white bg-black grid-bg flex-shrink-0 select-none box-border"
+      className="relative border-2 border-white bg-black grid-bg select-none box-border flex-shrink-0"
       style={{
         width: '100%',
-        maxWidth: '100%',
+        maxWidth: '240px',
         maxHeight: '100%',
         height: 'auto',
         aspectRatio: '1 / 2',
