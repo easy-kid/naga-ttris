@@ -1221,8 +1221,8 @@ export default function App() {
         />
       ) : (
         <>
-          {/* HEADER & SCORE TELEMETRY */}
-          <div className="w-full flex-shrink-0 px-3 pt-2 pb-1 z-20">
+          {/* TOP COCKPIT HUD & TELEMETRY */}
+          <div className="w-full flex-shrink-0 px-2 pt-1 pb-0.5 z-20">
             <ScoreBoard
               stats={stats}
               isMuted={isMuted}
@@ -1232,42 +1232,28 @@ export default function App() {
               onOpenSettings={() => setIsSettingsOpen(true)}
               sprintElapsedTimeMs={sprintElapsedMs}
               blitzRemainingMs={blitzRemainingMs}
+              heldPiece={heldPiece}
+              canHold={canHold}
+              onHoldClick={holdCurrentPiece}
+              nextQueue={nextQueue}
             />
           </div>
 
-          {/* MAIN PLAYFIELD & SIDE PANELS */}
+          {/* GIANT DOMINANT 10x20 PLAYFIELD */}
           <div
-            className="flex-1 w-full min-h-0 flex items-center justify-center gap-1.5 px-1 z-10 py-1"
+            className="flex-1 w-full min-h-0 flex items-center justify-center px-1 z-10 py-1 overflow-hidden"
             onTouchStart={handleBoardTouchStart}
             onTouchEnd={handleBoardTouchEnd}
           >
-            {/* Left Side: Hold Panel + Live Telemetry */}
-            <div className="flex flex-col items-center justify-center flex-shrink-0">
-              <HoldPanel
-                heldPiece={heldPiece}
-                canHold={canHold}
-                onHoldClick={holdCurrentPiece}
-                stats={stats}
-              />
-            </div>
-
-            {/* Center: 10x20 Game Board (Dominant enlarged matrix) */}
-            <div className="h-full min-h-0 flex-1 max-w-[245px] flex items-center justify-center">
-              <GameBoard
-                board={board}
-                currentPiece={currentPiece}
-                ghostY={ghostY}
-                clearingLines={clearingLines}
-                lockCells={lockCells}
-                dropFlash={dropFlash}
-                lastClear={lastClear}
-              />
-            </div>
-
-            {/* Right Side: Next Queue Panel (5 previews) */}
-            <div className="flex flex-col items-center justify-center flex-shrink-0">
-              <NextQueuePanel queue={nextQueue} />
-            </div>
+            <GameBoard
+              board={board}
+              currentPiece={currentPiece}
+              ghostY={ghostY}
+              clearingLines={clearingLines}
+              lockCells={lockCells}
+              dropFlash={dropFlash}
+              lastClear={lastClear}
+            />
           </div>
 
           {/* TACTILE TOUCH CONTROLS */}

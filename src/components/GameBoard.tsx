@@ -58,22 +58,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   return (
     <div
-      className="relative border-2 border-white bg-black grid-bg select-none box-border flex-shrink-0"
+      className="relative border-2 border-white bg-black grid-bg select-none box-border shadow-2xl flex-shrink-0"
       style={{
-        width: '100%',
-        maxWidth: '240px',
+        height: '100%',
         maxHeight: '100%',
-        height: 'auto',
-        aspectRatio: '1 / 2',
+        width: 'auto',
+        aspectRatio: '10 / 20',
       }}
     >
-      {/* Corner Bracket Accents (100% Square) */}
+      {/* Corner Bracket Accents (100% Square Brutalist Accents) */}
       <div className="corner corner-tl z-20"></div>
       <div className="corner corner-tr z-20"></div>
       <div className="corner corner-bl z-20"></div>
       <div className="corner corner-br z-20"></div>
 
-      {/* Grid Cells Container */}
+      {/* 10x20 Grid Cells Matrix */}
       <div
         className={`w-full h-full absolute inset-0 z-10 grid gap-0 ${
           dropFlash ? 'anim-drop-flash' : ''
@@ -106,13 +105,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {lastClear && Date.now() - lastClear.timestamp < 1500 && (
         <div className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center p-2">
           <div
-            className={`border border-white px-3 py-2 text-center shadow-lg ${
+            className={`border-2 border-white px-4 py-2.5 text-center shadow-2xl ${
               lastClear.isPerfectClear
-                ? 'bg-white text-black font-black anim-lock scale-105'
+                ? 'bg-white text-black font-black anim-lock scale-110'
                 : 'bg-black/95 text-white'
             }`}
           >
-            <div className="text-xs sm:text-sm font-black font-mono tracking-widest uppercase">
+            <div className="text-sm sm:text-base font-black font-mono tracking-widest uppercase">
               {lastClear.isPerfectClear
                 ? '★ ALL_CLEAR // PERFECT ★'
                 : lastClear.type === 'TETRIS'
@@ -122,12 +121,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 : `[ +${lastClear.points} PTS ]`}
             </div>
             {lastClear.b2b && !lastClear.isPerfectClear && (
-              <div className="text-[9px] font-mono font-bold tracking-wider mt-0.5 opacity-90">
+              <div className="text-[10px] font-mono font-bold tracking-wider mt-0.5 opacity-90">
                 // BACK-TO-BACK BONUS
               </div>
             )}
             {lastClear.combo > 0 && (
-              <div className="text-[9px] font-mono font-bold tracking-wider">
+              <div className="text-[10px] font-mono font-bold tracking-wider">
                 COMBO x{lastClear.combo}
               </div>
             )}
