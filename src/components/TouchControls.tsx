@@ -24,9 +24,15 @@ const useHoldAction = (
 ) => {
   const timeoutRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
+  const lastTriggerTimeRef = useRef<number>(0);
 
   const trigger = useCallback(() => {
     if (disabled) return;
+    const now = Date.now();
+    // Guard against accidental micro-duplicate triggers
+    if (now - lastTriggerTimeRef.current < 25) return;
+    lastTriggerTimeRef.current = now;
+
     if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate(8);
@@ -36,22 +42,27 @@ const useHoldAction = (
   }, [action, disabled, vibrate]);
 
   const start = useCallback(
-    (e?: React.PointerEvent | React.TouchEvent) => {
+    (e: React.PointerEvent) => {
       if (e) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
       }
       if (disabled) return;
+
+      // Clean up previous pending timers
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      // Trigger exactly once for the tap (1 square movement)
       trigger();
-      clearTimeout(timeoutRef.current);
-      clearInterval(intervalRef.current);
 
       if (repeatDelay === 0) {
-        // Instant 0-ARR: Repeat immediately and rapidly
+        // Instant 0-ARR (Sonic Auto Shift): Repeat to wall after DAS delay
         timeoutRef.current = setTimeout(() => {
           for (let i = 0; i < 9; i++) action();
         }, initialDelay);
       } else {
+        // Standard DAS -> ARR auto-shift interval
         timeoutRef.current = setTimeout(() => {
           intervalRef.current = setInterval(trigger, Math.max(16, repeatDelay));
         }, initialDelay);
@@ -60,30 +71,34 @@ const useHoldAction = (
     [trigger, initialDelay, repeatDelay, disabled, action]
   );
 
-  const stop = useCallback((e?: React.PointerEvent | React.TouchEvent | Event) => {
+  const stop = useCallback((e?: React.PointerEvent) => {
     if (e) {
       if (e.cancelable) e.preventDefault();
       e.stopPropagation();
     }
-    clearTimeout(timeoutRef.current);
-    clearInterval(intervalRef.current);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     return () => {
-      clearTimeout(timeoutRef.current);
-      clearInterval(intervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
+  // ONLY bind Pointer Events to prevent duplicate touchstart + pointerdown double-firing
   return {
     onPointerDown: start,
     onPointerUp: stop,
     onPointerLeave: stop,
     onPointerCancel: stop,
-    onTouchStart: start,
-    onTouchEnd: stop,
-    onTouchCancel: stop,
   };
 };
 
@@ -122,15 +137,16 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   };
 
   return (
-    <div className="w-full flex-shrink-0 px-2 pt-1 pb-2 select-none z-20">
-      <div className="metadata text-center mb-1 text-[8px] text-neutral-400">
-        COMMAND_CENTER // TACTILE_INTERFACE
+    <div className="w-full flex-shrink-0 px-2.5 pt-1 pb-2 select-none z-20">
+      <div className="metadata flex items-center justify-between px-1 mb-1 text-[8px] text-neutral-400">
+        <span>COMMAND_CENTER // TACTILE_MATRIX</span>
+        <span>DAS:{settings.dasMs}ms ARR:{settings.arrMs}ms</span>
       </div>
 
       <div className="grid grid-cols-6 gap-1.5 w-full">
-        {/* Row 1: Rotation & Hold */}
+        {/* Row 1: Rotation & Hold Modules */}
         <button
-          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors"
+          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors py-2 touch-none"
           onPointerDown={handleTap(onHold, 15)}
           disabled={disabled}
         >
@@ -138,7 +154,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
         </button>
 
         <button
-          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors"
+          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors py-2 touch-none"
           onPointerDown={handleTap(onRotateCCW, 10)}
           disabled={disabled}
         >
@@ -146,36 +162,33 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
         </button>
 
         <button
-          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors"
+          className="col-span-2 industrial-btn text-xs font-mono font-bold tracking-wider active:bg-white active:!text-black transition-colors py-2 touch-none"
           onPointerDown={handleTap(onRotateCW, 10)}
           disabled={disabled}
         >
           CW ↻
         </button>
 
-        {/* Row 2: Directional Movement */}
+        {/* Row 2: Directional Movement Grid (1 step per single tap) */}
         <button
-          className="col-span-2 industrial-btn text-lg sm:text-xl font-mono font-black active:bg-white active:!text-black transition-colors py-2.5"
+          className="col-span-2 industrial-btn text-xl font-mono font-black active:bg-white active:!text-black transition-colors py-3 touch-none flex items-center justify-center"
           {...leftHold}
-          style={{ touchAction: 'manipulation' }}
           disabled={disabled}
         >
           ◄
         </button>
 
         <button
-          className="col-span-2 industrial-btn text-xs sm:text-sm font-mono font-bold active:bg-white active:!text-black transition-colors py-2.5"
+          className="col-span-2 industrial-btn text-xs font-mono font-bold active:bg-white active:!text-black transition-colors py-3 touch-none flex items-center justify-center tracking-wider"
           {...dropHold}
-          style={{ touchAction: 'manipulation' }}
           disabled={disabled}
         >
           ▼ DROP
         </button>
 
         <button
-          className="col-span-2 industrial-btn text-lg sm:text-xl font-mono font-black active:bg-white active:!text-black transition-colors py-2.5"
+          className="col-span-2 industrial-btn text-xl font-mono font-black active:bg-white active:!text-black transition-colors py-3 touch-none flex items-center justify-center"
           {...rightHold}
-          style={{ touchAction: 'manipulation' }}
           disabled={disabled}
         >
           ►
@@ -183,7 +196,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
 
         {/* Row 3: Instant Gravity (Hard Drop) */}
         <button
-          className="col-span-6 industrial-btn !bg-white !text-black active:!bg-black active:!text-white transition-colors flex items-center justify-center font-mono font-black text-xs sm:text-sm tracking-widest py-2.5 shadow-sm"
+          className="col-span-6 industrial-btn !bg-white !text-black active:!bg-black active:!text-white transition-colors flex items-center justify-center font-mono font-black text-xs sm:text-sm tracking-widest py-2.5 shadow-sm touch-none"
           onPointerDown={handleTap(onHardDrop, 25)}
           disabled={disabled}
         >

@@ -1237,17 +1237,22 @@ export default function App() {
 
           {/* MAIN PLAYFIELD & SIDE PANELS */}
           <div
-            className="flex-1 w-full min-h-0 flex items-center justify-center gap-1.5 px-2 z-10 py-1"
+            className="flex-1 w-full min-h-0 flex items-center justify-center gap-2 px-2 z-10 py-1"
             onTouchStart={handleBoardTouchStart}
             onTouchEnd={handleBoardTouchEnd}
           >
-            {/* Left Side: Hold Panel */}
-            <div className="flex flex-col items-center justify-start flex-shrink-0">
-              <HoldPanel heldPiece={heldPiece} canHold={canHold} onHoldClick={holdCurrentPiece} />
+            {/* Left Side: Hold Panel + Live Telemetry */}
+            <div className="flex flex-col items-center justify-center flex-shrink-0">
+              <HoldPanel
+                heldPiece={heldPiece}
+                canHold={canHold}
+                onHoldClick={holdCurrentPiece}
+                stats={stats}
+              />
             </div>
 
             {/* Center: 10x20 Game Board */}
-            <div className="flex-1 h-full min-h-0 min-w-0 max-w-[270px] flex items-center justify-center">
+            <div className="flex-1 h-full min-h-0 min-w-0 max-w-[260px] flex items-center justify-center">
               <GameBoard
                 board={board}
                 currentPiece={currentPiece}
@@ -1260,7 +1265,7 @@ export default function App() {
             </div>
 
             {/* Right Side: Next Queue Panel (5 previews) */}
-            <div className="flex flex-col items-center justify-start flex-shrink-0">
+            <div className="flex flex-col items-center justify-center flex-shrink-0">
               <NextQueuePanel queue={nextQueue} />
             </div>
           </div>
